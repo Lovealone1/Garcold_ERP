@@ -1,0 +1,7 @@
+database:
+  url: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/garcold_pos
+  echo: true
+
+
+application_properties:
+  env: ${APP_ENV:local}
