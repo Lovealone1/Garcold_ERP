@@ -50,3 +50,41 @@ class ProductoRepository(BaseRepository):
             await self.db.refresh(producto)
             return producto
         return None
+
+    async def aumentar_cantidad(self, producto_id: int, cantidad: int) -> Producto | None:
+        """
+        Aumenta el stock disponible de un producto.
+
+        Args:
+            producto_id (int): ID del producto.
+            cantidad (int): Unidades a aumentar.
+
+        Returns:
+            Producto actualizado o None si no existe.
+        """
+        producto = await self.get_by_id(producto_id)
+        if producto:
+            producto.cantidad = (producto.cantidad or 0) + cantidad
+            await self.db.commit()
+            await self.db.refresh(producto)
+            return producto
+        return None
+
+    async def disminuir_cantidad(self, producto_id: int, cantidad: int) -> Producto | None:
+        """
+        Disminuye el stock disponible de un producto. No permite valores negativos.
+
+        Args:
+            producto_id (int): ID del producto.
+            cantidad (int): Unidades a restar.
+
+        Returns:
+            Producto actualizado o None si no existe o si el stock es insuficiente.
+        """
+        producto = await self.get_by_id(producto_id)
+        if producto and (producto.cantidad or 0) >= cantidad:
+            producto.cantidad -= cantidad
+            await self.db.commit()
+            await self.db.refresh(producto)
+            return producto
+        return None

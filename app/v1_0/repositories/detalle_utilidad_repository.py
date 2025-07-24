@@ -18,3 +18,20 @@ class DetalleUtilidadRepository(BaseRepository):
             select(DetalleUtilidad).where(DetalleUtilidad.venta_id == venta_id)
         )
         return result.scalars().all()
+    
+    async def bulk_insert_detalles(self, detalles_dto: list[DetalleUtilidadDTO]) -> list[DetalleUtilidad]:
+        """
+        Inserta múltiples detalles de utilidad en una sola operación.
+
+        Args:
+            detalles_dto (list[DetalleUtilidadDTO]): Lista de DTOs a insertar.
+
+        Returns:
+            list[DetalleUtilidad]: Lista de objetos insertados.
+        """
+        detalles = [DetalleUtilidad(**dto.model_dump()) for dto in detalles_dto]
+        self.db.add_all(detalles)
+        await self.db.commit()
+        for detalle in detalles:
+            await self.db.refresh(detalle)
+            return detalles

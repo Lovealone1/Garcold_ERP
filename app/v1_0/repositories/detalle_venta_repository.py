@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import List
 
 from app.v1_0.models import DetalleVenta
 from app.v1_0.repositories import BaseRepository
@@ -35,3 +36,11 @@ class DetalleVentaRepository(BaseRepository):
             await self.db.refresh(detalle)
             return detalle
         return None
+
+    async def bulk_insert_detalles(self, detalles: List[DetalleVentaDTO]) -> None:
+        """
+        Inserta múltiples detalles de venta en una sola operación.
+        """
+        objects = [DetalleVenta(**d.model_dump()) for d in detalles]
+        self.db.add_all(objects)
+        await self.db.commit()
