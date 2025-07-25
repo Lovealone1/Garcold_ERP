@@ -1,12 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Callable
 
 from app.v1_0.models import Venta
 from app.v1_0.repositories import BaseRepository
 from app.v1_0.entities import VentaDTO
 
 class VentaRepository(BaseRepository):
-    def __init__(self, db: AsyncSession):
-        super().__init__(Venta, db)
+    def __init__(self, session_factory: Callable[[], AsyncSession]):
+        super().__init__(session_factory, Venta)
 
     async def create_venta(self, venta_dto: VentaDTO) -> Venta:
         venta = Venta(**venta_dto.model_dump())

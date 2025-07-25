@@ -7,4 +7,4 @@ class DetalleVentaDTO(BaseModel):
     precio_producto: float
     total: float
     venta_id: int
-    fecha_creacion: datetime = Field(default_factory=datetime.now)
+

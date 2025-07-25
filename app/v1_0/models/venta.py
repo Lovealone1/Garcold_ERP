@@ -1,7 +1,9 @@
 from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from .base import Base  # si tienes Base en un módulo común
+
+from .cliente import Cliente 
+from .base import Base
 
 class Venta(Base):
     __tablename__ = "venta"
@@ -14,7 +16,7 @@ class Venta(Base):
     saldo_restante = Column(Float, nullable=True)
     fecha = Column(DateTime, default=datetime.now)
 
-    cliente = relationship("Cliente")
+    cliente = relationship(Cliente)   
     banco = relationship("Banco")
     detalles = relationship("DetalleVenta", back_populates="venta", cascade="all, delete-orphan")
     utilidad = relationship("Utilidad", back_populates="venta", cascade="all, delete-orphan", uselist=False)

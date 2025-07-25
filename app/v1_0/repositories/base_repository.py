@@ -1,26 +1,33 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Generic, TypeVar, Type
+from typing import Callable, TypeVar, Generic, Type
 
-ModelType = TypeVar("ModelType")
+T = TypeVar("T")
 
-class BaseRepository(Generic[ModelType]):
-    def __init__(self, model: Type[ModelType], db: AsyncSession):
-        self.model = model
-        self.db = db
 
-    async def get_all(self):
-        result = await self.db.execute(self.model.__table__.select())
-        return result.scalars().all()
+class BaseRepository(Generic[T]):
+    def __init__(self, session_factory: Callable[[], AsyncSession], model_class: Type[T]):
+        self._session_factory = session_factory
+        self.model_class = model_class
 
-    async def get_by_id(self, id: int):
-        return await self.db.get(self.model, id)
+    @property
+    def db(self) -> AsyncSession:
+        return self._session_factory()
 
-    async def create(self, obj: ModelType):
-        self.db.add(obj)
-        await self.db.commit()
-        await self.db.refresh(obj)
+    async def create(self, obj: T) -> T:
+        async with self.db as session:
+            session.add(obj)
+            await session.commit()
+            await session.refresh(obj)
         return obj
 
-    async def delete(self, obj: ModelType):
-        await self.db.delete(obj)
-        await self.db.commit()
+    async def delete(self, obj: T) -> None:
+        async with self.db as session:
+            await session.delete(obj)
+            await session.commit()
+
+    async def get_by_id(self, obj_id: int) -> T | None:
+        async with self.db as session:
+            return await session.get(self.model_class, obj_id)
+
+    async def get_session(self) -> AsyncSession:
+        return self._session_factory()

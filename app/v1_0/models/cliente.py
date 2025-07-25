@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
-Base = declarative_base()
+from .base import Base
 
 class Cliente(Base):
     __tablename__ = "cliente"

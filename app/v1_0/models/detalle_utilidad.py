@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, ForeignKey
+from sqlalchemy import Column, Integer, Float, ForeignKey, Computed
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -11,9 +11,6 @@ class DetalleUtilidad(Base):
     cantidad = Column(Integer, nullable=False)
     precio_compra = Column(Float, nullable=False)
     precio_venta = Column(Float, nullable=False)
-    total_utilidad = Column(Float, nullable=False)
-    utilidad_id = Column(Integer, ForeignKey("utilidades.id"), nullable=True)
 
     venta = relationship("Venta")
     producto = relationship("Producto")
-    utilidad = relationship("Utilidad", back_populates="detalles")

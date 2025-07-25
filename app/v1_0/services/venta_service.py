@@ -46,11 +46,11 @@ class VentaService:
         """
         detalles = []
         for item in carrito:
-            total = item["cantidad"] * item["precio_producto"]
+            total = item.cantidad * item.precio_producto
             detalle = DetalleVentaDTO(
-                producto_id=item["producto_id"],
-                cantidad=item["cantidad"],
-                precio_producto=item["precio_producto"],
+                producto_id=item.producto_id,
+                cantidad=item.cantidad,
+                precio_producto=item.precio_producto,
                 total=total,
                 venta_id=0
             )
@@ -64,18 +64,6 @@ class VentaService:
         estado_id: int,
         detalles: List[DetalleVentaDTO]
     ) -> Venta:
-        """
-        Finaliza la venta, insertando detalles y registrando la venta principal.
-
-        Args:
-            cliente_id (int): ID del cliente.
-            banco_id (int): ID del banco.
-            estado_id (int): Estado de la venta.
-            detalles (List[DetalleVentaDTO]): Detalles generados previamente.
-
-        Returns:
-            Venta creada.
-        """
         total_venta = 0.0
 
         for detalle in detalles:
@@ -102,8 +90,7 @@ class VentaService:
                 cantidad=d.cantidad,
                 precio_producto=d.precio_producto,
                 total=d.total,
-                venta_id=venta.id,
-                fecha_creacion=datetime.now()
+                venta_id=venta.id
             ) for d in detalles
         ]
         await self.detalle_repository.bulk_insert_detalles(detalles_con_id)
@@ -117,22 +104,13 @@ class VentaService:
             if cliente:
                 nuevo_saldo = (cliente.saldo or 0) + total_venta
                 await self.cliente_repository.update_saldo(cliente_id, nuevo_saldo)
-        
+
         detalles_utilidad = await self.agregar_detalle_utilidad(detalles_con_id)
         await self.registrar_utilidad(venta.id, detalles_utilidad)
 
         return venta
 
     async def agregar_detalle_utilidad(self, detalles: List[DetalleVentaDTO]) -> List[DetalleUtilidadDTO]:
-        """
-        Genera los detalles de utilidad con base en los productos vendidos.
-
-        Args:
-            detalles (List[DetalleVentaDTO]): Detalles de la venta.
-
-        Returns:
-            List[DetalleUtilidadDTO]: Detalles de utilidad listos para inserción.
-        """
         detalle_utilidades = []
         for d in detalles:
             producto = await self.producto_repository.get_by_id(d.producto_id)
@@ -153,13 +131,6 @@ class VentaService:
         return detalle_utilidades
 
     async def registrar_utilidad(self, venta_id: int, detalles_utilidad: List[DetalleUtilidadDTO]):
-        """
-        Registra la utilidad total de una venta y sus detalles asociados.
-
-        Args:
-            venta_id (int): ID de la venta.
-            detalles_utilidad (List[DetalleUtilidadDTO]): Lista de detalles.
-        """
         utilidad_total = sum([d.total_utilidad for d in detalles_utilidad])
         await self.detalle_utilidad_repository.bulk_insert_detalles(detalles_utilidad)
 
@@ -170,23 +141,7 @@ class VentaService:
         await self.utilidad_repository.create_utilidad(utilidad_dto)
 
     async def delete_venta(self, venta_id: int) -> bool:
-            """
-            Elimina una venta y sus registros relacionados en cascada:
-            - Detalles de venta
-            - Utilidad
-            - Detalles de utilidad
-
-            Args:
-                venta_id (int): ID de la venta a eliminar.
-
-            Returns:
-                bool: True si se eliminó correctamente.
-
-            Raises:
-                HTTPException: Si la venta no existe.
-            """
-            venta = await self.venta_repository.get_by_id(venta_id)
-            if not venta:
-                raise HTTPException(status_code=404, detail="Venta no encontrada")
-
-            return await self.venta_repository.delete_venta(venta_id)
+        venta = await self.venta_repository.get_by_id(venta_id)
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        return await self.venta_repository.delete_venta(venta_id)

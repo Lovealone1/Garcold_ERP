@@ -12,4 +12,8 @@ class Utilidad(Base):
     fecha = Column(DateTime, default=datetime.now)
 
     venta = relationship("Venta")
-    detalles = relationship("DetalleUtilidad", back_populates="utilidad", cascade="all, delete-orphan")
+    detalles = relationship(
+        "DetalleUtilidad",
+        primaryjoin="DetalleUtilidad.venta_id == foreign(Utilidad.venta_id)",
+        viewonly=True  
+    )

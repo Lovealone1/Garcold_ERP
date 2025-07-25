@@ -1,13 +1,14 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import Callable
 
 from app.v1_0.models import Cliente
 from app.v1_0.repositories import BaseRepository
 from app.v1_0.entities import ClienteDTO
 
 class ClienteRepository(BaseRepository):
-    def __init__(self, db: AsyncSession):
-        super().__init__(Cliente, db)
+    def __init__(self, session_factory: Callable[[], AsyncSession]):
+        self._session_factory = session_factory
 
     async def create_cliente(self, cliente_dto: ClienteDTO) -> Cliente:
         cliente = Cliente(**cliente_dto.model_dump())

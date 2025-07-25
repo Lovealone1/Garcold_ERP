@@ -1,29 +1,48 @@
-from fastapi import FastAPI, Depends,HTTPException
-from sqlalchemy.orm import Session
-from app.utils.database.db_connector import get_db
-from app.v1_0.repositories import ClienteRepository
-from app.v1_0.entities import ClienteDTO
+import time
+import json
+from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+from app.v1_0.routers import venta_router
+from app.app_containers import ApplicationContainer  
+from app.utils.database import async_session  
 
-@app.post("/clientes")
-async def crear_cliente(cliente_dto: ClienteDTO, db: Session = Depends(get_db)):
-    repo = ClienteRepository(db)
-    nuevo_cliente = await repo.create_cliente(cliente_dto)
-    return nuevo_cliente
+PREFIX = "/sales-api"
 
-@app.get("/clientes/{cliente_id}")
-async def obtener_cliente(cliente_id: int, db: Session = Depends(get_db)):
-    repo = ClienteRepository(db)
-    cliente = await repo.get_by_cc_nit(cliente_id)
-    if not cliente:
-        raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    return cliente
+def create_app() -> FastAPI:
+    """FastAPI configuration for the Sales System."""
 
-@app.delete("/clientes/{cliente_id}")
-async def eliminar_cliente(cliente_id: int, db: Session = Depends(get_db)):
-    repo = ClienteRepository(db)
-    eliminado = await repo.delete_cliente(cliente_id)
-    if not eliminado:
-        raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    return {"mensaje": "Cliente eliminado correctamente"}
+    container = ApplicationContainer()
+    container.db_session.override(async_session)
+
+    app = FastAPI(
+        openapi_url=f"{PREFIX}/openapi.json",
+        docs_url=f"{PREFIX}/docs",
+        redoc_url=f"{PREFIX}/redoc",
+        title="Sales Management API",
+        description="API to manage sales, products, clients and utilities in the sales system.",
+        lifespan=lifespan,
+    )
+    app.container = container
+
+    base_router = APIRouter(prefix=PREFIX)
+    base_router.include_router(venta_router.router)
+
+    @base_router.get("/")
+    @base_router.get("/ready")
+    async def ready():
+        return {"message": "Sales API Server is running"}
+
+    app.include_router(base_router)
+    return app
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.container.init_resources()
+    yield
+
+
+app = create_app()

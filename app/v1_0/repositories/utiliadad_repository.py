@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import Callable
 
 from app.v1_0.models import Utilidad
 from app.v1_0.repositories import BaseRepository
@@ -7,8 +8,8 @@ from app.v1_0.entities import UtilidadDTO
 
 
 class UtilidadRepository(BaseRepository):
-    def __init__(self, db: AsyncSession):
-        super().__init__(Utilidad, db)
+    def __init__(self, session_factory: Callable[[], AsyncSession]):
+        self._session_factory = session_factory
 
     async def create_utilidad(self, utilidad_dto: UtilidadDTO) -> Utilidad:
         utilidad = Utilidad(**utilidad_dto.model_dump())

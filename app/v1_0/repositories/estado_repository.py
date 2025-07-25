@@ -1,12 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import Callable
 
 from app.v1_0.models import Estado
 from app.v1_0.repositories import BaseRepository
 
 class EstadoRepository(BaseRepository):
-    def __init__(self, db: AsyncSession):
-        super().__init__(Estado, db)
+    def __init__(self, session_factory: Callable[[], AsyncSession]):
+        self._session_factory = session_factory
 
     async def get_by_id(self, estado_id: int) -> Estado | None:
         """
