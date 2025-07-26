@@ -5,36 +5,27 @@ from typing import Callable
 from app.v1_0.models import Estado
 from app.v1_0.repositories import BaseRepository
 
-class EstadoRepository(BaseRepository):
-    def __init__(self, session_factory: Callable[[], AsyncSession]):
-        self._session_factory = session_factory
 
-    async def get_by_id(self, estado_id: int) -> Estado | None:
+class EstadoRepository(BaseRepository[Estado]):
+    def __init__(self, session_factory: Callable[[], AsyncSession]):
+        super().__init__(session_factory=session_factory, model_class=Estado)
+
+    async def get_by_id(self, estado_id: int, session: AsyncSession | None = None) -> Estado | None:
         """
         Obtiene un estado por su ID.
-
-        Args:
-            estado_id (int): ID del estado.
-
-        Returns:
-            Estado si existe, de lo contrario None.
         """
-        result = await self.db.execute(
+        session = session or await self.get_session()
+        result = await session.execute(
             select(Estado).where(Estado.id == estado_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_by_nombre(self, nombre: str) -> Estado | None:
+    async def get_by_nombre(self, nombre: str, session: AsyncSession | None = None) -> Estado | None:
         """
         Obtiene un estado por su nombre exacto.
-
-        Args:
-            nombre (str): Nombre del estado.
-
-        Returns:
-            Estado si existe, de lo contrario None.
         """
-        result = await self.db.execute(
+        session = session or await self.get_session()
+        result = await session.execute(
             select(Estado).where(Estado.nombre == nombre)
         )
         return result.scalar_one_or_none()

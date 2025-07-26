@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import Callable
+from sqlalchemy import select, delete
+from typing import Callable, Optional
 
 from app.v1_0.models import DetalleUtilidad
 from app.v1_0.repositories import BaseRepository
@@ -11,21 +11,18 @@ class DetalleUtilidadRepository(BaseRepository[DetalleUtilidad]):
     def __init__(self, session_factory: Callable[[], AsyncSession]):
         super().__init__(session_factory=session_factory, model_class=DetalleUtilidad)
 
-    async def create_detalle(self, detalle_dto: DetalleUtilidadDTO, session: AsyncSession | None = None) -> DetalleUtilidad:
+    async def create_detalle(self, detalle_dto: DetalleUtilidadDTO, session: Optional[AsyncSession] = None) -> DetalleUtilidad:
         detalle = DetalleUtilidad(**detalle_dto.model_dump())
         return await self.create(detalle, session=session)
 
-    async def get_by_venta(self, venta_id: int, session: AsyncSession | None = None) -> list[DetalleUtilidad]:
+    async def get_by_venta(self, venta_id: int, session: Optional[AsyncSession] = None) -> list[DetalleUtilidad]:
         session = session or await self.get_session()
         result = await session.execute(
             select(DetalleUtilidad).where(DetalleUtilidad.venta_id == venta_id)
         )
         return result.scalars().all()
 
-    async def bulk_insert_detalles(self, detalles_dto: list[DetalleUtilidadDTO], session: AsyncSession | None = None) -> list[DetalleUtilidad]:
-        """
-        Inserta múltiples detalles de utilidad en una sola operación.
-        """
+    async def bulk_insert_detalles(self, detalles_dto: list[DetalleUtilidadDTO], session: Optional[AsyncSession] = None) -> list[DetalleUtilidad]:
         session = session or await self.get_session()
         detalles = [DetalleUtilidad(**dto.model_dump(exclude={"total_utilidad"})) for dto in detalles_dto]
         session.add_all(detalles)
@@ -33,3 +30,10 @@ class DetalleUtilidadRepository(BaseRepository[DetalleUtilidad]):
         for detalle in detalles:
             await session.refresh(detalle)
         return detalles
+
+    async def delete_by_venta(self, venta_id: int, session: Optional[AsyncSession] = None) -> None:
+        session = session or await self.get_session()
+        await session.execute(
+            delete(DetalleUtilidad).where(DetalleUtilidad.venta_id == venta_id)
+        )
+        await session.commit()

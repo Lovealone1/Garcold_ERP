@@ -1,6 +1,21 @@
 from typing import List
 from pydantic import BaseModel, Field
+from datetime import datetime
 
+class DetalleVentaResponse(BaseModel):
+    producto_id: int
+    cantidad: int
+    precio_producto: float
+    total: float
+
+class VentaResponse(BaseModel):
+    id: int
+    cliente: str
+    banco: str
+    estado: str
+    total: float
+    saldo_restante: float
+    fecha: datetime
 
 class DetalleCarrito(BaseModel):
     producto_id: int = Field(..., description="ID del producto a vender")
