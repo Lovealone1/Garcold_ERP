@@ -1,6 +1,9 @@
+# app/v1_0/services/compra_service.py
+
 from datetime import datetime
 from typing import List
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.entities import CompraDTO, DetalleCompraDTO
 from app.v1_0.schemas.compra_schema import CompraResponse
@@ -15,6 +18,13 @@ from app.v1_0.repositories import (
 )
 
 class CompraService:
+    """
+    Servicio que orquesta la lógica de negocio para el manejo de Compras:
+     - Construcción de detalles
+     - Registro (creación) de compras
+     - Consulta de compras
+     - Eliminación de compras y reversión de inventario/saldos
+    """
     def __init__(
         self,
         compra_repository: CompraRepository,
@@ -32,17 +42,28 @@ class CompraService:
         self.estado_repository = estado_repository
 
     def construir_detalles(self, carrito: List[dict]) -> List[DetalleCompraDTO]:
-        detalles = []
+        """
+        Transforma la lista de ítems recibida del frontend en DTOs de detalle de compra.
+
+        Args:
+            carrito: Lista de dicts con claves:
+                - producto_id (int)
+                - cantidad (int)
+                - precio (float)
+
+        Returns:
+            Una lista de DetalleCompraDTO con los totales por ítem y compra_id = 0.
+        """
+        detalles: List[DetalleCompraDTO] = []
         for item in carrito:
             total = item.cantidad * item.precio
-            detalle = DetalleCompraDTO(
+            detalles.append(DetalleCompraDTO(
                 producto_id=item.producto_id,
                 cantidad=item.cantidad,
                 precio=item.precio,
                 total=total,
                 compra_id=0
-            )
-            detalles.append(detalle)
+            ))
         return detalles
 
     async def registrar_compra(
@@ -50,31 +71,53 @@ class CompraService:
         proveedor_id: int,
         banco_id: int,
         estado_id: int,
-        detalles: List[DetalleCompraDTO]
-    ) -> Compra:
-        total_compra = 0.0
+        detalles: List[DetalleCompraDTO],
+        db: AsyncSession
+    ) -> CompraResponse:
+        """
+        Registra una nueva compra junto con sus detalles, ajusta inventario y saldos.
 
-        for detalle in detalles:
-            producto = await self.producto_repository.get_by_id(detalle.producto_id)
-            if not producto:
-                raise HTTPException(status_code=404, detail=f"Producto {detalle.producto_id} no encontrado")
-            total_compra += detalle.total
+        Ejecuta todo dentro de una transacción atómica.
 
-        estado = await self.estado_repository.get_by_id(estado_id)
-        es_credito = estado and estado.nombre.lower() == "compra credito"
+        Args:
+            proveedor_id: ID del proveedor de la compra.
+            banco_id: ID del banco para débito/crédito.
+            estado_id: ID que indica si es compra a crédito o contado.
+            detalles: Lista de DetalleCompraDTO sin IDs de compra.
+            db: Sesión asíncrona de SQLAlchemy.
 
-        saldo = total_compra if es_credito else 0.0
-        compra_dto = CompraDTO(
-            proveedor_id=proveedor_id,
-            banco_id=banco_id,
-            estado_id=estado_id,
-            total=total_compra,
-            saldo=saldo,
-            fecha=datetime.now()
-        )
+        Returns:
+            CompraResponse: DTO listo para devolver al cliente con
+                - id: nuevo ID de compra
+                - proveedor, banco, estado: nombres resueltos
+                - total, saldo, fecha
 
-        try:
-            compra = await self.compra_repository.create_compra(compra_dto)
+        Raises:
+            HTTPException 404: Si algún producto o la compra no se encuentra.
+        """
+        async with db.begin():
+
+            total_compra = 0.0
+            for d in detalles:
+                producto = await self.producto_repository.get_by_id(d.producto_id, session=db)
+                if not producto:
+                    raise HTTPException(404, f"Producto {d.producto_id} no encontrado")
+                total_compra += d.total
+
+            estado = await self.estado_repository.get_by_id(estado_id, session=db)
+            es_credito = bool(estado and estado.nombre.lower() == "compra credito")
+            saldo = total_compra if es_credito else 0.0
+
+            compra_dto = CompraDTO(
+                proveedor_id=proveedor_id,
+                banco_id=banco_id,
+                estado_id=estado_id,
+                total=total_compra,
+                saldo=saldo,
+                fecha=datetime.now()
+            )
+
+            compra = await self.compra_repository.create_compra(compra_dto, session=db)
 
             detalles_con_id = [
                 DetalleCompraDTO(
@@ -85,29 +128,55 @@ class CompraService:
                     compra_id=compra.id
                 ) for d in detalles
             ]
-            await self.detalle_repository.bulk_insert_detalles(detalles_con_id)
+            await self.detalle_repository.bulk_insert_detalles(detalles_con_id, session=db)
 
             for d in detalles:
-                await self.producto_repository.aumentar_cantidad(d.producto_id, d.cantidad)
+                await self.producto_repository.aumentar_cantidad(
+                    d.producto_id, d.cantidad, session=db
+                )
 
             if not es_credito:
-                banco = await self.banco_repository.get_by_id(banco_id)
-                if banco:
-                    nuevo_saldo = (banco.saldo or 0) - total_compra
-                    await self.banco_repository.update_saldo(banco_id, nuevo_saldo)
+                await self.banco_repository.disminuir_saldo(
+                    banco_id, total_compra, session=db
+                )
+            proveedor = await self.proveedor_repository.get_by_id(compra.proveedor_id, session=db)
+            banco     = await self.banco_repository.get_by_id(compra.banco_id, session=db)
+            estado    = await self.estado_repository.get_by_id(compra.estado_id, session=db)
+            return CompraResponse(
+                id=compra.id,
+                proveedor=proveedor.nombre if proveedor else "Desconocido",
+                banco=banco.nombre if banco else "Desconocido",
+                estado=estado.nombre if estado else "Desconocido",
+                total=compra.total,
+                saldo=compra.saldo,
+                fecha=compra.fecha_compra
+            )
 
-            return compra
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error al registrar compra: {str(e)}")
+    async def obtener_compra(
+        self,
+        compra_id: int,
+        db: AsyncSession
+    ) -> CompraResponse:
+        """
+        Recupera una compra por su ID y construye el DTO de respuesta.
 
-    async def obtener_compra(self, compra_id: int) -> CompraResponse:
-        compra = await self.compra_repository.get_by_id(compra_id)
+        Args:
+            compra_id: ID de la compra a consultar.
+            db: Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            CompraResponse con todos los campos desplegados.
+
+        Raises:
+            HTTPException 404: Si la compra no existe.
+        """
+        compra = await self.compra_repository.get_by_id(compra_id, session=db)
         if not compra:
-            raise HTTPException(status_code=404, detail="Compra no encontrada")
+            raise HTTPException(404, "Compra no encontrada")
 
-        proveedor = await self.proveedor_repository.get_by_id(compra.proveedor_id)
-        banco = await self.banco_repository.get_by_id(compra.banco_id)
-        estado = await self.estado_repository.get_by_id(compra.estado_id)
+        proveedor = await self.proveedor_repository.get_by_id(compra.proveedor_id, session=db)
+        banco     = await self.banco_repository.get_by_id(compra.banco_id, session=db)
+        estado    = await self.estado_repository.get_by_id(compra.estado_id, session=db)
 
         return CompraResponse(
             id=compra.id,
@@ -116,24 +185,48 @@ class CompraService:
             estado=estado.nombre if estado else "Desconocido",
             total=compra.total,
             saldo=compra.saldo,
-            fecha=compra.fecha
+            fecha=compra.fecha_compra
         )
 
-    async def eliminar_compra(self, compra_id: int) -> bool:
-        compra = await self.compra_repository.get_by_id(compra_id)
-        if not compra:
-            raise HTTPException(status_code=404, detail="Compra no encontrada")
+    async def eliminar_compra(
+    self,
+    compra_id: int,
+    db: AsyncSession
+    ) -> bool:
+        """
+        Elimina una compra y revierte inventario y saldos asociados en una transacción.
 
-        detalles = await self.detalle_repository.get_by_compra_id(compra_id)
+        Args:
+            compra_id: ID de la compra a eliminar.
+            db: Sesión asíncrona de SQLAlchemy.
 
-        for d in detalles:
-            await self.producto_repository.disminuir_cantidad(d.producto_id, d.cantidad)
+        Returns:
+            True si la compra fue eliminada correctamente.
 
-        estado = await self.estado_repository.get_by_id(compra.estado_id)
-        es_credito = estado and estado.nombre.lower() == "compra credito"
+        Raises:
+            HTTPException 404: Si la compra no existe.
+        """
+        async with db.begin():
+            compra = await self.compra_repository.get_by_id(compra_id, session=db)
+            if not compra:
+                raise HTTPException(404, "Compra no encontrada")
+            
+            detalles   = await self.detalle_repository.get_by_compra_id(compra_id, session=db)
+            estado     = await self.estado_repository.get_by_id(compra.estado_id, session=db)
+            es_credito = bool(estado and estado.nombre.lower() == "compra credito")
 
-        if not es_credito:
-            await self.banco_repository._aumentar_saldo(compra.banco_id, compra.total)
+            for d in detalles:
+                await self.producto_repository.disminuir_cantidad(
+                    d.producto_id, d.cantidad, session=db
+                )
 
-        await self.detalle_repository.delete_by_compra(compra_id)
-        return await self.compra_repository.delete_compra(compra_id)
+            if not es_credito:
+                await self.banco_repository.aumentar_saldo(
+                    compra.banco_id, compra.total, session=db
+                )
+
+            await self.detalle_repository.delete_by_compra(compra_id, session=db)
+            await self.compra_repository.delete_compra(compra_id, session=db)
+
+        return True
+

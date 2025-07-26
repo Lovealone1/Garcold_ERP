@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import List
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.schemas.venta_schema import VentaResponse
 from app.v1_0.entities import VentaDTO, DetalleVentaDTO, DetalleUtilidadDTO, UtilidadDTO
-from app.v1_0.models import Venta
+from app.v1_0.schemas.venta_schema import VentaResponse
 from app.v1_0.repositories import (
     VentaRepository,
     DetalleVentaRepository,
@@ -17,6 +17,14 @@ from app.v1_0.repositories import (
 )
 
 class VentaService:
+    """
+    Servicio que orquesta la lógica de negocio para el manejo de Ventas:
+      - Construcción de detalles de venta
+      - Finalización de venta (creación de venta, detalles, ajustes de inventario y saldo)
+      - Cálculo y registro de utilidades
+      - Consulta de ventas
+      - Eliminación de ventas y reversión de inventario y saldos
+    """
     def __init__(
         self,
         venta_repository: VentaRepository,
@@ -39,25 +47,27 @@ class VentaService:
 
     def agregar_detalle_venta(self, carrito: List[dict]) -> List[DetalleVentaDTO]:
         """
-        Construye objetos DetalleVentaDTO a partir de datos del frontend o lógica de aplicación.
+        Construye una lista de DetalleVentaDTO a partir del carrito enviado por el frontend.
 
         Args:
-            carrito (List[dict]): Lista de ítems con producto_id, cantidad y precio_producto.
+            carrito: Lista de objetos dict con campos:
+                - producto_id (int)
+                - cantidad (int)
+                - precio_producto (float)
 
         Returns:
-            List[DetalleVentaDTO]: Detalles de la venta sin persistencia.
+            List[DetalleVentaDTO]: Detalles con el cálculo de total por línea y venta_id = 0.
         """
         detalles = []
         for item in carrito:
             total = item.cantidad * item.precio_producto
-            detalle = DetalleVentaDTO(
+            detalles.append(DetalleVentaDTO(
                 producto_id=item.producto_id,
                 cantidad=item.cantidad,
                 precio_producto=item.precio_producto,
                 total=total,
                 venta_id=0
-            )
-            detalles.append(detalle)
+            ))
         return detalles
 
     async def finalizar_venta(
@@ -65,107 +75,90 @@ class VentaService:
         cliente_id: int,
         banco_id: int,
         estado_id: int,
-        detalles: List[DetalleVentaDTO]
-    ) -> Venta:
-        total_venta = 0.0
+        detalles: List[DetalleVentaDTO],
+        db: AsyncSession
+    ) -> VentaResponse:
+        """
+        Finaliza una venta: valida stock, crea la venta y sus detalles,
+        ajusta inventario y saldos, calcula y registra utilidades.
 
-        for detalle in detalles:
-            producto = await self.producto_repository.get_by_id(detalle.producto_id)
-            if not producto:
-                raise HTTPException(status_code=404, detail=f"Producto {detalle.producto_id} no encontrado")
-            if (producto.cantidad or 0) < detalle.cantidad:
-                raise HTTPException(status_code=400, detail=f"Stock insuficiente para producto {producto.referencia}")
-            total_venta += detalle.total
+        Todo se ejecuta en una transacción atómica.
 
-        estado = await self.estado_repository.get_by_id(estado_id)
-        es_venta_credito = estado and estado.nombre.lower() == "venta credito"
+        Args:
+            cliente_id: ID del cliente que realiza la compra.
+            banco_id: ID del banco para débito o crédito.
+            estado_id: ID que determina si es venta a crédito o contado.
+            detalles: Lista de DetalleVentaDTO con los productos y precios.
+            db: Sesión asíncrona de SQLAlchemy.
 
-        saldo_restante = total_venta if es_venta_credito else 0.0
+        Returns:
+            VentaResponse: DTO con datos de la venta (id, cliente, banco, estado, total, saldo_restante, fecha).
 
-        venta_dto = VentaDTO(
-            cliente_id=cliente_id,
-            banco_id=banco_id,
-            total=total_venta,
-            estado_id=estado_id,
-            saldo_restante=saldo_restante,
-            fecha=datetime.now()
-        )
-        venta = await self.venta_repository.create_venta(venta_dto)
+        Raises:
+            HTTPException 404: Si algún producto no existe.
+            HTTPException 400: Si no hay suficiente stock para algún producto.
+        """
+        async with db.begin():
+            total_venta = 0.0
+            for d in detalles:
+                producto = await self.producto_repository.get_by_id(d.producto_id, session=db)
+                if not producto:
+                    raise HTTPException(404, f"Producto {d.producto_id} no encontrado")
+                if (producto.cantidad or 0) < d.cantidad:
+                    raise HTTPException(400, f"Stock insuficiente para producto {producto.referencia}")
+                total_venta += d.total
 
-        detalles_con_id = [
-            DetalleVentaDTO(
-                producto_id=d.producto_id,
-                cantidad=d.cantidad,
-                precio_producto=d.precio_producto,
-                total=d.total,
-                venta_id=venta.id
-            ) for d in detalles
-        ]
-        await self.detalle_repository.bulk_insert_detalles(detalles_con_id)
+            estado = await self.estado_repository.get_by_id(estado_id, session=db)
+            es_credito = bool(estado and estado.nombre.lower() == "venta credito")
+            saldo_restante = total_venta if es_credito else 0.0
 
-        for d in detalles:
-            await self.producto_repository.disminuir_cantidad(d.producto_id, d.cantidad)
-
-        if es_venta_credito:
-            cliente = await self.cliente_repository.get_by_id(cliente_id)
-            if cliente:
-                nuevo_saldo = (cliente.saldo or 0) + total_venta
-                await self.cliente_repository.update_saldo(cliente_id, nuevo_saldo)
-        else:
-            banco = await self.banco_repository.get_by_id(banco_id)
-            if banco:
-                nuevo_saldo = (banco.saldo or 0) + total_venta
-                await self.banco_repository.update_saldo(banco_id, nuevo_saldo)
-
-        detalles_utilidad = await self.agregar_detalle_utilidad(detalles_con_id)
-        await self.registrar_utilidad(venta.id, detalles_utilidad)
-
-        return venta
-
-    async def agregar_detalle_utilidad(self, detalles: List[DetalleVentaDTO]) -> List[DetalleUtilidadDTO]:
-        detalle_utilidades = []
-        for d in detalles:
-            producto = await self.producto_repository.get_by_id(d.producto_id)
-            if not producto:
-                raise HTTPException(status_code=404, detail=f"Producto {d.producto_id} no encontrado")
-            utilidad_unitaria = d.precio_producto - producto.precio_compra
-            total_utilidad = utilidad_unitaria * d.cantidad
-
-            detalle_utilidad = DetalleUtilidadDTO(
-                venta_id=d.venta_id,
-                producto_id=d.producto_id,
-                cantidad=d.cantidad,
-                precio_compra=producto.precio_compra,
-                precio_venta=d.precio_producto,
-                total_utilidad=total_utilidad
+            venta_dto = VentaDTO(
+                cliente_id=cliente_id,
+                banco_id=banco_id,
+                total=total_venta,
+                estado_id=estado_id,
+                saldo_restante=saldo_restante,
+                fecha=datetime.now()
             )
-            detalle_utilidades.append(detalle_utilidad)
-        return detalle_utilidades
 
-    async def registrar_utilidad(self, venta_id: int, detalles_utilidad: List[DetalleUtilidadDTO]):
-        utilidad_total = sum([d.total_utilidad for d in detalles_utilidad])
-        await self.detalle_utilidad_repository.bulk_insert_detalles(detalles_utilidad)
+            venta = await self.venta_repository.create_venta(venta_dto, session=db)
 
-        utilidad_dto = UtilidadDTO(
-            venta_id=venta_id,
-            utilidad=utilidad_total
-        )
-        await self.utilidad_repository.create_utilidad(utilidad_dto)
+            detalles_con_id = [
+                DetalleVentaDTO(
+                    producto_id=d.producto_id,
+                    cantidad=d.cantidad,
+                    precio_producto=d.precio_producto,
+                    total=d.total,
+                    venta_id=venta.id
+                ) for d in detalles
+            ]
+            await self.detalle_repository.bulk_insert_detalles(detalles_con_id, session=db)
 
-    async def delete_venta(self, venta_id: int) -> bool:
-        venta = await self.venta_repository.get_by_id(venta_id)
-        if not venta:
-            raise HTTPException(status_code=404, detail="Venta no encontrada")
-        return await self.venta_repository.delete_venta(venta_id)
-    
-    async def obtener_venta(self, venta_id: int) -> VentaResponse:
-        venta = await self.venta_repository.get_by_id(venta_id)
-        if not venta:
-            raise HTTPException(status_code=404, detail="Venta no encontrada")
+            for d in detalles:
+                await self.producto_repository.disminuir_cantidad(
+                    d.producto_id, d.cantidad, session=db
+                )
 
-        cliente = await self.cliente_repository.get_by_id(venta.cliente_id)
-        banco = await self.banco_repository.get_by_id(venta.banco_id)
-        estado = await self.estado_repository.get_by_id(venta.estado_id)
+            if es_credito:
+                cliente = await self.cliente_repository.get_by_id(cliente_id, session=db)
+                if cliente:
+                    nuevo_saldo = (cliente.saldo or 0) + total_venta
+                    await self.cliente_repository.update_saldo(cliente_id, nuevo_saldo, session=db)
+            else:
+                banco = await self.banco_repository.get_by_id(banco_id, session=db)
+                if banco:
+                    nuevo_saldo = (banco.saldo or 0) + total_venta
+                    await self.banco_repository.update_saldo(banco_id, nuevo_saldo, session=db)
+
+            detalle_utilidades = await self._calcular_detalle_utilidad(detalles_con_id, session=db)
+            await self.detalle_utilidad_repository.bulk_insert_detalles(detalle_utilidades, session=db)
+
+            utilidad_total = sum(d.total_utilidad for d in detalle_utilidades)
+            utilidad_dto = UtilidadDTO(venta_id=venta.id, utilidad=utilidad_total)
+            await self.utilidad_repository.create_utilidad(utilidad_dto, session=db)
+
+            cliente = await self.cliente_repository.get_by_id(cliente_id, session=db)
+            banco    = await self.banco_repository.get_by_id(banco_id, session=db)
 
         return VentaResponse(
             id=venta.id,
@@ -176,36 +169,113 @@ class VentaService:
             saldo_restante=venta.saldo_restante,
             fecha=venta.fecha
         )
-    
-    async def eliminar_venta(self, venta_id: int) -> bool:
-        venta = await self.venta_repository.get_by_id(venta_id)
+
+    async def _calcular_detalle_utilidad(
+        self,
+        detalles: List[DetalleVentaDTO],
+        session: AsyncSession
+    ) -> List[DetalleUtilidadDTO]:
+        """
+        Construye la lista de DetalleUtilidadDTO calculando la utilidad por línea.
+
+        Args:
+            detalles: DetalleVentaDTO con la información de la venta.
+            session: Sesión SQLAlchemy para obtener precio de compra.
+
+        Returns:
+            List[DetalleUtilidadDTO]: Detalles de utilidad listos para insertar.
+        """
+        resultado: List[DetalleUtilidadDTO] = []
+        for d in detalles:
+            producto = await self.producto_repository.get_by_id(d.producto_id, session=session)
+            if not producto:
+                raise HTTPException(404, f"Producto {d.producto_id} no encontrado")
+            utilidad_unitaria = d.precio_producto - producto.precio_compra
+            total_utilidad = utilidad_unitaria * d.cantidad
+            resultado.append(DetalleUtilidadDTO(
+                venta_id=d.venta_id,
+                producto_id=d.producto_id,
+                cantidad=d.cantidad,
+                precio_compra=producto.precio_compra,
+                precio_venta=d.precio_producto,
+                total_utilidad=total_utilidad
+            ))
+        return resultado
+
+    async def obtener_venta(
+        self,
+        venta_id: int,
+        db: AsyncSession
+    ) -> VentaResponse:
+        """
+        Obtiene una venta y construye el DTO de respuesta.
+
+        Args:
+            venta_id: ID de la venta.
+            db: Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            VentaResponse: Datos completos de la venta.
+
+        Raises:
+            HTTPException 404: Si la venta no existe.
+        """
+        venta = await self.venta_repository.get_by_id(venta_id, session=db)
         if not venta:
-            raise HTTPException(status_code=404, detail="Venta no encontrada")
+            raise HTTPException(404, "Venta no encontrada")
 
-        async with self.venta_repository.session_scope() as session:
-            detalles = await self.detalle_repository.get_by_venta_id(venta_id)
+        cliente = await self.cliente_repository.get_by_id(venta.cliente_id, session=db)
+        banco    = await self.banco_repository.get_by_id(venta.banco_id, session=db)
+        estado   = await self.estado_repository.get_by_id(venta.estado_id, session=db)
 
-            # Revertir stock de productos
+        return VentaResponse(
+            id=venta.id,
+            cliente=cliente.nombre if cliente else "Desconocido",
+            banco=banco.nombre if banco else "Desconocido",
+            estado=estado.nombre if estado else "Desconocido",
+            total=venta.total,
+            saldo_restante=venta.saldo_restante,
+            fecha=venta.fecha
+        )
+
+    async def eliminar_venta(
+        self,
+        venta_id: int,
+        db: AsyncSession
+    ) -> None:
+        """
+        Elimina una venta y revierte inventario, saldos y utilidades en una transacción.
+
+        Args:
+            venta_id: ID de la venta a eliminar.
+            db: Sesión asíncrona de SQLAlchemy.
+
+        Raises:
+            HTTPException 404: Si la venta no existe.
+        """
+        async with db.begin():
+            venta = await self.venta_repository.get_by_id(venta_id, session=db)
+            if not venta:
+                raise HTTPException(404, "Venta no encontrada")
+
+            detalles = await self.detalle_repository.get_by_venta_id(venta_id, session=db)
+            estado   = await self.estado_repository.get_by_id(venta.estado_id, session=db)
+            es_credito = bool(estado and estado.nombre.lower() == "venta credito")
+
             for d in detalles:
-                await self.producto_repository.aumentar_cantidad(d.producto_id, d.cantidad, session=session)
+                await self.producto_repository.aumentar_cantidad(
+                    d.producto_id, d.cantidad, session=db
+                )
 
-            estado = await self.estado_repository.get_by_id(venta.estado_id, session=session)
-            es_venta_credito = estado and estado.nombre.lower() == "venta credito"
-
-            if es_venta_credito:
-                cliente = await self.cliente_repository.get_by_id(venta.cliente_id, session=session)
+            if es_credito:
+                cliente = await self.cliente_repository.get_by_id(venta.cliente_id, session=db)
                 if cliente:
                     nuevo_saldo = max((cliente.saldo or 0) - venta.total, 0)
-                    await self.cliente_repository.update_saldo(cliente.id, nuevo_saldo, session=session)
+                    await self.cliente_repository.update_saldo(cliente.id, nuevo_saldo, session=db)
             else:
-                await self.banco_repository._disminuir_saldo(venta.banco_id, venta.total, session=session)
+                await self.banco_repository.disminuir_saldo(venta.banco_id, venta.total, session=db)
 
-            # Eliminar detalles
-            await self.detalle_utilidad_repository.delete_by_venta(venta_id, session=session)
-            await self.utilidad_repository.delete_by_venta(venta_id, session=session)
-            await self.detalle_repository.delete_by_venta(venta_id, session=session)
-            await self.venta_repository.delete_venta(venta_id, session=session)
-
-            await session.commit()
-
-        return True
+            await self.detalle_utilidad_repository.delete_by_venta(venta_id, session=db)
+            await self.utilidad_repository.delete_by_venta(venta_id, session=db)
+            await self.detalle_repository.delete_by_venta(venta_id, session=db)
+            await self.venta_repository.delete_venta(venta_id, session=db)

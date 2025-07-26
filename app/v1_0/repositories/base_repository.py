@@ -1,54 +1,51 @@
+# app/v1_0/repositories/base.py
+
+from typing import Generic, TypeVar, Type, Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Callable, TypeVar, Generic, Type, Optional
-from contextlib import asynccontextmanager
+from sqlalchemy import select
 
 T = TypeVar("T")
 
 class BaseRepository(Generic[T]):
-    def __init__(self, session_factory: Callable[[], AsyncSession], model_class: Type[T]):
-        self._session_factory = session_factory
+    """
+    Repositorio base que expone operaciones CRUD básicas sobre una entidad T.
+    No maneja sesiones ni commits: todo se hace con la misma AsyncSession pasada desde fuera.
+    """
+    def __init__(self, model_class: Type[T]):
         self.model_class = model_class
 
-    @property
-    def db(self) -> AsyncSession:
-        return self._session_factory()
-
-    async def create(self, obj: T, session: Optional[AsyncSession] = None) -> T:
-        session = session or self.db
-        async with session:
-            session.add(obj)
-            await session.commit()
-            await session.refresh(obj)
-        return obj
-
-    async def delete(self, obj: T, session: Optional[AsyncSession] = None) -> None:
-        session = session or self.db
-        async with session:
-            await session.delete(obj)
-            await session.commit()
-
-    async def get_by_id(self, obj_id: int, session: Optional[AsyncSession] = None) -> Optional[T]:
-        session = session or self.db
-        async with session:
-            return await session.get(self.model_class, obj_id)
-
-    async def get_all(self, session: Optional[AsyncSession] = None) -> list[T]:
-        from sqlalchemy import select
-        session = session or self.db
-        async with session:
-            result = await session.execute(select(self.model_class))
-            return result.scalars().all()
-
-    async def get_session(self) -> AsyncSession:
-        return self._session_factory()
-    
-    @asynccontextmanager
-    async def session_scope(self) -> AsyncSession:
+    async def add(self, entity: T, session: AsyncSession) -> T:
         """
-        Context manager asincrónico para manejar una sesión reutilizable y cerrarla automáticamente.
+        Agrega una nueva entidad al contexto y hace flush para asignar PK.
+        No hace commit.
         """
-        session = self._session_factory()
-        try:
-            yield session
-        finally:
-            await session.close()
+        session.add(entity)
+        await session.flush()
+        return entity
+
+    async def get_by_id(self, id: int, session: AsyncSession) -> Optional[T]:
+        """
+        Recupera una entidad por su PK.
+        """
+        return await session.get(self.model_class, id)
+
+    async def get_all(self, session: AsyncSession) -> List[T]:
+        """
+        Trae todas las instancias de la entidad.
+        """
+        result = await session.execute(select(self.model_class))
+        return result.scalars().all()
+
+    async def update(self, entity: T, session: AsyncSession) -> T:
+        """
+        Marca la entidad como modificada y hace flush de los cambios.
+        """
+        await session.flush()
+        return entity
+
+    async def delete(self, entity: T, session: AsyncSession) -> None:
+        """
+        Elimina la entidad y hace flush.
+        """
+        await session.delete(entity)
+        await session.flush()

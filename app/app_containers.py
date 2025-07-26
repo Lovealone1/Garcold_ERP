@@ -18,6 +18,5 @@ class ApplicationContainer(containers.DeclarativeContainer):
     db_session = providers.Object(async_session)
 
     api_container = providers.Container(
-        APIContainer,
-        db_session=db_session
+        APIContainer
     )

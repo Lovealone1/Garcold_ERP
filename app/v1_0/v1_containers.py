@@ -8,36 +8,33 @@ from app.v1_0.repositories import (
     EstadoRepository,
     DetalleUtilidadRepository,
     UtilidadRepository,
-    BancoRepository, 
+    BancoRepository,
     CompraRepository,
     DetalleCompraRepository,
-    ProveedorRepository
+    ProveedorRepository,
 )
-
 from app.v1_0.services.venta_service import VentaService
 from app.v1_0.services.compra_service import CompraService
 
-
 class APIContainer(containers.DeclarativeContainer):
     """
-    Contenedor para registrar los repositorios y servicios de la API de ventas.
+    Contenedor para repositorios y servicios de la API de ventas.
     """
 
-    db_session = providers.Dependency()
+    # Repositorios ya no reciben session_factory
+    venta_repository = providers.Singleton(VentaRepository)
+    detalle_venta_repository = providers.Singleton(DetalleVentaRepository)
+    producto_repository = providers.Singleton(ProductoRepository)
+    cliente_repository = providers.Singleton(ClienteRepository)
+    estado_repository = providers.Singleton(EstadoRepository)
+    detalle_utilidad_repository = providers.Singleton(DetalleUtilidadRepository)
+    utilidad_repository = providers.Singleton(UtilidadRepository)
+    banco_repository = providers.Singleton(BancoRepository)
+    compra_repository = providers.Singleton(CompraRepository)
+    detalle_compra_repository = providers.Singleton(DetalleCompraRepository)
+    proveedor_repository = providers.Singleton(ProveedorRepository)
 
-    venta_repository = providers.Singleton(VentaRepository, session_factory=db_session)
-    detalle_venta_repository = providers.Singleton(DetalleVentaRepository, session_factory=db_session)
-    producto_repository = providers.Singleton(ProductoRepository, session_factory=db_session)
-    cliente_repository = providers.Singleton(ClienteRepository, session_factory=db_session)
-    estado_repository = providers.Singleton(EstadoRepository, session_factory=db_session)
-    detalle_utilidad_repository = providers.Singleton(DetalleUtilidadRepository, session_factory=db_session)
-    utilidad_repository = providers.Singleton(UtilidadRepository, session_factory=db_session)
-    banco_repository = providers.Singleton(BancoRepository, session_factory=db_session)
-    compra_repository = providers.Singleton(CompraRepository, session_factory=db_session)
-    detalle_compra_repository = providers.Singleton(DetalleCompraRepository, session_factory=db_session)
-    proveedor_repository = providers.Singleton(ProveedorRepository, session_factory=db_session)
-
-
+    # Servicios
     venta_service = providers.Singleton(
         VentaService,
         venta_repository=venta_repository,
@@ -47,7 +44,7 @@ class APIContainer(containers.DeclarativeContainer):
         estado_repository=estado_repository,
         detalle_utilidad_repository=detalle_utilidad_repository,
         utilidad_repository=utilidad_repository,
-        banco_repository=banco_repository
+        banco_repository=banco_repository,
     )
 
     compra_service = providers.Singleton(
@@ -57,5 +54,5 @@ class APIContainer(containers.DeclarativeContainer):
         producto_repository=producto_repository,
         banco_repository=banco_repository,
         proveedor_repository=proveedor_repository,
-        estado_repository=estado_repository
+        estado_repository=estado_repository,
     )

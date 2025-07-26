@@ -1,81 +1,143 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+# app/v1_0/repositories/producto_repository.py
+
+from typing import Optional, List
 from sqlalchemy import select
-from typing import Callable
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Producto
 from app.v1_0.entities import ProductoDTO
-from app.v1_0.repositories.base_repository import BaseRepository  
-
+from .base_repository import BaseRepository
 
 class ProductoRepository(BaseRepository[Producto]):
-    def __init__(self, session_factory: Callable[[], AsyncSession]):
-        super().__init__(session_factory=session_factory, model_class=Producto)
+    def __init__(self):
+        super().__init__(Producto)
 
-    async def create_producto(self, producto_dto: ProductoDTO, session: AsyncSession | None = None) -> Producto:
-        producto = Producto(**producto_dto.model_dump())
-        return await self.create(producto, session=session)
+    async def create_producto(
+        self,
+        dto: ProductoDTO,
+        session: AsyncSession
+    ) -> Producto:
+        """
+        Crea un nuevo Producto a partir del DTO y hace flush para asignar su ID.
+        """
+        producto = Producto(**dto.model_dump())
+        await self.add(producto, session)
+        return producto
 
-    async def get_by_id(self, producto_id: int, session: AsyncSession | None = None) -> Producto | None:
-        session = session or await self.get_session()
-        result = await session.execute(select(Producto).where(Producto.id == producto_id))
+    async def get_by_id(
+        self,
+        producto_id: int,
+        session: AsyncSession
+    ) -> Optional[Producto]:
+        """
+        Recupera un Producto por su ID.
+        """
+        return await super().get_by_id(producto_id, session)
+
+    async def get_by_referencia(
+        self,
+        referencia: str,
+        session: AsyncSession
+    ) -> Optional[Producto]:
+        """
+        Recupera un Producto por su referencia exacta.
+        """
+        stmt = select(Producto).where(Producto.referencia == referencia)
+        result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_referencia(self, referencia: str, session: AsyncSession | None = None) -> Producto | None:
-        session = session or await self.get_session()
-        result = await session.execute(select(Producto).where(Producto.referencia == referencia))
-        return result.scalar_one_or_none()
-
-    async def get_by_descripcion(self, descripcion: str, session: AsyncSession | None = None) -> list[Producto]:
-        session = session or await self.get_session()
-        result = await session.execute(select(Producto).where(Producto.descripcion.ilike(f"%{descripcion}%")))
+    async def get_by_descripcion(
+        self,
+        descripcion: str,
+        session: AsyncSession
+    ) -> List[Producto]:
+        """
+        Busca Productos cuya descripción contenga la cadena (case‑insensitive).
+        """
+        stmt = select(Producto).where(Producto.descripcion.ilike(f"%{descripcion}%"))
+        result = await session.execute(stmt)
         return result.scalars().all()
 
-    async def update_producto(self, producto_id: int, producto_dto: ProductoDTO, session: AsyncSession | None = None) -> Producto | None:
-        session = session or await self.get_session()
-        producto = await self.get_by_id(producto_id, session=session)
-        if producto:
-            for field, value in producto_dto.model_dump(exclude_unset=True).items():
-                setattr(producto, field, value)
-            await session.commit()
-            await session.refresh(producto)
-            return producto
-        return None
+    async def update_producto(
+        self,
+        producto_id: int,
+        dto: ProductoDTO,
+        session: AsyncSession
+    ) -> Optional[Producto]:
+        """
+        Actualiza un Producto existente con los campos proporcionados en el DTO.
+        """
+        producto = await self.get_by_id(producto_id, session)
+        if not producto:
+            return None
 
-    async def delete_producto(self, producto_id: int, session: AsyncSession | None = None) -> bool:
-        session = session or await self.get_session()
-        producto = await self.get_by_id(producto_id, session=session)
-        if producto:
-            await session.delete(producto)
-            await session.commit()
-            return True
-        return False
+        for field, value in dto.model_dump(exclude_unset=True).items():
+            setattr(producto, field, value)
 
-    async def toggle_estado(self, producto_id: int, session: AsyncSession | None = None) -> Producto | None:
-        session = session or await self.get_session()
-        producto = await self.get_by_id(producto_id, session=session)
-        if producto:
-            producto.activo = not producto.activo
-            await session.commit()
-            await session.refresh(producto)
-            return producto
-        return None
+        await self.update(producto, session)
+        return producto
 
-    async def aumentar_cantidad(self, producto_id: int, cantidad: int, session: AsyncSession | None = None) -> Producto | None:
-        session = session or await self.get_session()
-        producto = await self.get_by_id(producto_id, session=session)
-        if producto:
-            producto.cantidad = (producto.cantidad or 0) + cantidad
-            await session.commit()
-            await session.refresh(producto)
-            return producto
-        return None
+    async def delete_producto(
+        self,
+        producto_id: int,
+        session: AsyncSession
+    ) -> bool:
+        """
+        Elimina un Producto dado su ID.
+        """
+        producto = await self.get_by_id(producto_id, session)
+        if not producto:
+            return False
 
-    async def disminuir_cantidad(self, producto_id: int, cantidad: int, session: AsyncSession | None = None) -> Producto | None:
-        session = session or await self.get_session()
-        producto = await self.get_by_id(producto_id, session=session)
-        if producto and (producto.cantidad or 0) >= cantidad:
-            producto.cantidad -= cantidad
-            await session.commit()
-            await session.refresh(producto)
-            return producto
-        return None
+        await self.delete(producto, session)
+        return True
+
+    async def toggle_estado(
+        self,
+        producto_id: int,
+        session: AsyncSession
+    ) -> Optional[Producto]:
+        """
+        Invierte el flag `activo` de un Producto.
+        """
+        producto = await self.get_by_id(producto_id, session)
+        if not producto:
+            return None
+
+        producto.activo = not producto.activo
+        await self.update(producto, session)
+        return producto
+
+    async def aumentar_cantidad(
+        self,
+        producto_id: int,
+        cantidad: int,
+        session: AsyncSession
+    ) -> Optional[Producto]:
+        """
+        Incrementa la cantidad en inventario de un Producto.
+        """
+        producto = await self.get_by_id(producto_id, session)
+        if not producto:
+            return None
+
+        producto.cantidad = (producto.cantidad or 0) + cantidad
+        await self.update(producto, session)
+        return producto
+
+    async def disminuir_cantidad(
+        self,
+        producto_id: int,
+        cantidad: int,
+        session: AsyncSession
+    ) -> Optional[Producto]:
+        """
+        Decrementa la cantidad en inventario de un Producto si hay stock suficiente.
+        """
+        producto = await self.get_by_id(producto_id, session)
+        if not producto or (producto.cantidad or 0) < cantidad:
+            return None
+
+        producto.cantidad -= cantidad
+        await self.update(producto, session)
+        return producto

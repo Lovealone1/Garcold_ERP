@@ -1,64 +1,96 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, List
 from sqlalchemy import select, delete
-from typing import List, Callable, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import DetalleVenta
-from app.v1_0.repositories import BaseRepository
 from app.v1_0.entities import DetalleVentaDTO
+from .base_repository import BaseRepository
 
+class DetalleVentaRepository(BaseRepository[DetalleVenta]):
+    def __init__(self):
+        super().__init__(DetalleVenta)
 
-class DetalleVentaRepository(BaseRepository):
-    def __init__(self, session_factory: Callable[[], AsyncSession]):
-        super().__init__(session_factory, DetalleVenta)
-
-    async def create_detalle(self, detalle_dto: DetalleVentaDTO, session: Optional[AsyncSession] = None) -> DetalleVenta:
-        session = session or await self.get_session()
-        detalle = DetalleVenta(**detalle_dto.model_dump())
-        session.add(detalle)
-        await session.commit()
-        await session.refresh(detalle)
+    async def create_detalle(
+        self,
+        dto: DetalleVentaDTO,
+        session: AsyncSession
+    ) -> DetalleVenta:
+        """
+        Crea un DetalleVenta a partir del DTO y hace flush para asignar su ID.
+        """
+        detalle = DetalleVenta(**dto.model_dump())
+        await self.add(detalle, session)
         return detalle
 
-    async def get_by_venta_id(self, venta_id: int, session: Optional[AsyncSession] = None) -> List[DetalleVenta]:
-        session = session or await self.get_session()
-        result = await session.execute(
-            select(DetalleVenta).where(DetalleVenta.venta_id == venta_id)
-        )
+    async def get_by_venta_id(
+        self,
+        venta_id: int,
+        session: AsyncSession
+    ) -> List[DetalleVenta]:
+        """
+        Recupera todos los DetalleVenta asociados a una venta.
+        """
+        stmt = select(DetalleVenta).where(DetalleVenta.venta_id == venta_id)
+        result = await session.execute(stmt)
         return result.scalars().all()
 
-    async def delete_detalle(self, detalle_id: int, session: Optional[AsyncSession] = None) -> bool:
-        session = session or await self.get_session()
-        detalle = await session.get(DetalleVenta, detalle_id)
-        if detalle:
-            await session.delete(detalle)
-            await session.commit()
-            return True
-        return False
+    async def update_detalle(
+        self,
+        detalle_id: int,
+        dto: DetalleVentaDTO,
+        session: AsyncSession
+    ) -> Optional[DetalleVenta]:
+        """
+        Actualiza un DetalleVenta existente con los campos proporcionados en el DTO.
+        """
+        detalle = await self.get_by_id(detalle_id, session)
+        if not detalle:
+            return None
 
-    async def update_detalle(self, detalle_id: int, detalle_dto: DetalleVentaDTO, session: Optional[AsyncSession] = None) -> DetalleVenta | None:
-        session = session or await self.get_session()
-        detalle = await session.get(DetalleVenta, detalle_id)
-        if detalle:
-            for field, value in detalle_dto.model_dump(exclude_unset=True).items():
-                setattr(detalle, field, value)
-            await session.commit()
-            await session.refresh(detalle)
-            return detalle
-        return None
+        for field, value in dto.model_dump(exclude_unset=True).items():
+            setattr(detalle, field, value)
 
-    async def bulk_insert_detalles(self, detalles: List[DetalleVentaDTO], session: Optional[AsyncSession] = None) -> List[DetalleVenta]:
-        session = session or await self.get_session()
-        objects = [DetalleVenta(**d.model_dump(exclude={"total"})) for d in detalles]
+        await self.update(detalle, session)
+        return detalle
+
+    async def delete_detalle(
+        self,
+        detalle_id: int,
+        session: AsyncSession
+    ) -> bool:
+        """
+        Elimina un DetalleVenta dado su ID.
+        """
+        detalle = await self.get_by_id(detalle_id, session)
+        if not detalle:
+            return False
+
+        await self.delete(detalle, session)
+        return True
+
+    async def bulk_insert_detalles(
+        self,
+        dtos: List[DetalleVentaDTO],
+        session: AsyncSession
+    ) -> List[DetalleVenta]:
+        """
+        Inserta en lote múltiples DetalleVenta a partir de una lista de DTOs.
+        """
+        objects = [DetalleVenta(**dto.model_dump(exclude={"total"})) for dto in dtos]
         session.add_all(objects)
-        await session.commit()
-        for obj in objects:
-            await session.refresh(obj)
+        await session.flush()
         return objects
 
-    async def delete_by_venta(self, venta_id: int, session: Optional[AsyncSession] = None) -> None:
-        session = session or await self.get_session()
-        await session.execute(
-            delete(DetalleVenta).where(DetalleVenta.venta_id == venta_id)
-        )
-        await session.commit()
-
+    async def delete_by_venta(
+        self,
+        venta_id: int,
+        session: AsyncSession
+    ) -> int:
+        """
+        Elimina todos los DetalleVenta asociados a la venta_id dada
+        y retorna el número de filas eliminadas.
+        """
+        stmt = delete(DetalleVenta).where(DetalleVenta.venta_id == venta_id)
+        result = await session.execute(stmt)
+        await session.flush()
+        return result.rowcount

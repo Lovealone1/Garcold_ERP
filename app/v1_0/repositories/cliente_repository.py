@@ -1,59 +1,100 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+# app/v1_0/repositories/cliente_repository.py
+
+from typing import Optional, List
 from sqlalchemy import select
-from typing import Callable, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Cliente
-from app.v1_0.repositories import BaseRepository
 from app.v1_0.entities import ClienteDTO
-
+from .base_repository import BaseRepository
 
 class ClienteRepository(BaseRepository[Cliente]):
-    def __init__(self, session_factory: Callable[[], AsyncSession]):
-        super().__init__(session_factory, Cliente)
+    def __init__(self):
+        super().__init__(Cliente)
 
-    async def create_cliente(self, cliente_dto: ClienteDTO, session: Optional[AsyncSession] = None) -> Cliente:
-        cliente = Cliente(**cliente_dto.model_dump())
-        return await self.create(cliente, session=session)
-
-    async def get_by_cc_nit(self, cc_nit: str, session: Optional[AsyncSession] = None) -> Cliente | None:
-        session = session or await self.get_session()
-        result = await session.execute(
-            select(Cliente).where(Cliente.cc_nit == str(cc_nit))
-        )
-        return result.scalar_one_or_none()
-
-    async def get_by_nombre(self, nombre: str, session: Optional[AsyncSession] = None) -> list[Cliente]:
-        session = session or await self.get_session()
-        result = await session.execute(
-            select(Cliente).where(Cliente.nombre.ilike(f"%{nombre}%"))
-        )
-        return result.scalars().all()
-
-    async def update_cliente(self, cliente_id: int, cliente_dto: ClienteDTO, session: Optional[AsyncSession] = None) -> Cliente | None:
-        session = session or await self.get_session()
-        cliente = await session.get(Cliente, cliente_id)
-        if cliente:
-            for field, value in cliente_dto.model_dump(exclude_unset=True).items():
-                setattr(cliente, field, value)
-            await session.commit()
-            await session.refresh(cliente)
-            return cliente
-        return None
-
-    async def update_saldo(self, cliente_id: int, nuevo_saldo: float, session: Optional[AsyncSession] = None) -> Cliente | None:
-        session = session or await self.get_session()
-        cliente = await session.get(Cliente, cliente_id)
-        if cliente:
-            cliente.saldo = nuevo_saldo
-            await session.commit()
-            await session.refresh(cliente)
+    async def create_cliente(
+        self,
+        dto: ClienteDTO,
+        session: AsyncSession
+    ) -> Cliente:
+        """
+        Crea un nuevo Cliente a partir del DTO y hace flush para asignar su ID.
+        """
+        cliente = Cliente(**dto.model_dump())
+        await self.add(cliente, session)
         return cliente
 
-    async def delete_cliente(self, cliente_id: int, session: Optional[AsyncSession] = None) -> bool:
-        session = session or await self.get_session()
-        cliente = await session.get(Cliente, cliente_id)
-        if cliente:
-            await session.delete(cliente)
-            await session.commit()
-            return True
-        return False
+    async def get_by_cc_nit(
+        self,
+        cc_nit: str,
+        session: AsyncSession
+    ) -> Optional[Cliente]:
+        """
+        Obtiene un Cliente por su CC/NIT, o None si no existe.
+        """
+        stmt = select(Cliente).where(Cliente.cc_nit == cc_nit)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_nombre(
+        self,
+        nombre: str,
+        session: AsyncSession
+    ) -> List[Cliente]:
+        """
+        Busca clientes cuyo nombre contenga la cadena (case‑insensitive).
+        """
+        stmt = select(Cliente).where(Cliente.nombre.ilike(f"%{nombre}%"))
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def update_cliente(
+        self,
+        cliente_id: int,
+        dto: ClienteDTO,
+        session: AsyncSession
+    ) -> Optional[Cliente]:
+        """
+        Actualiza los campos de un Cliente existente según el DTO.
+        """
+        cliente = await self.get_by_id(cliente_id, session)
+        if not cliente:
+            return None
+
+        for field, value in dto.model_dump(exclude_unset=True).items():
+            setattr(cliente, field, value)
+
+        await self.update(cliente, session)
+        return cliente
+
+    async def update_saldo(
+        self,
+        cliente_id: int,
+        nuevo_saldo: float,
+        session: AsyncSession
+    ) -> Optional[Cliente]:
+        """
+        Actualiza únicamente el saldo de un Cliente.
+        """
+        cliente = await self.get_by_id(cliente_id, session)
+        if not cliente:
+            return None
+
+        cliente.saldo = nuevo_saldo
+        await self.update(cliente, session)
+        return cliente
+
+    async def delete_cliente(
+        self,
+        cliente_id: int,
+        session: AsyncSession
+    ) -> bool:
+        """
+        Elimina un Cliente dado su ID; retorna True si existía.
+        """
+        cliente = await self.get_by_id(cliente_id, session)
+        if not cliente:
+            return False
+
+        await self.delete(cliente, session)
+        return True

@@ -1,31 +1,35 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+# app/v1_0/repositories/estado_repository.py
+
+from typing import Optional
 from sqlalchemy import select
-from typing import Callable
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Estado
-from app.v1_0.repositories import BaseRepository
-
+from .base_repository import BaseRepository
 
 class EstadoRepository(BaseRepository[Estado]):
-    def __init__(self, session_factory: Callable[[], AsyncSession]):
-        super().__init__(session_factory=session_factory, model_class=Estado)
+    def __init__(self):
+        super().__init__(Estado)
 
-    async def get_by_id(self, estado_id: int, session: AsyncSession | None = None) -> Estado | None:
+    async def get_by_id(
+        self,
+        estado_id: int,
+        session: AsyncSession
+    ) -> Optional[Estado]:
         """
-        Obtiene un estado por su ID.
+        Recupera un Estado por su ID.
         """
-        session = session or await self.get_session()
-        result = await session.execute(
-            select(Estado).where(Estado.id == estado_id)
-        )
-        return result.scalar_one_or_none()
+        # Podemos usar el método genérico de BaseRepository:
+        return await super().get_by_id(estado_id, session)
 
-    async def get_by_nombre(self, nombre: str, session: AsyncSession | None = None) -> Estado | None:
+    async def get_by_nombre(
+        self,
+        nombre: str,
+        session: AsyncSession
+    ) -> Optional[Estado]:
         """
-        Obtiene un estado por su nombre exacto.
+        Recupera un Estado por su nombre exacto.
         """
-        session = session or await self.get_session()
-        result = await session.execute(
-            select(Estado).where(Estado.nombre == nombre)
-        )
+        stmt = select(Estado).where(Estado.nombre == nombre)
+        result = await session.execute(stmt)
         return result.scalar_one_or_none()
