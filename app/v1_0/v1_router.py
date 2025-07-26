@@ -1,6 +1,7 @@
 from fastapi import APIRouter
-from app.v1_0.routers.venta_router import venta_router
+from app.v1_0.routers import defined_routers
 
-router = APIRouter(prefix="/v1", tags=["v1"])
+v1_router = APIRouter(prefix="/v1", tags=["v1"])
 
-router.include_router(venta_router.router)
+for r in defined_routers:
+    v1_router.include_router(r)

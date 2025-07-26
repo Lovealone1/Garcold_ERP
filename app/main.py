@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 
-from app.v1_0.routers import venta_router
+from app.v1_0.v1_router import v1_router
 from app.app_containers import ApplicationContainer  
 from app.utils.database import async_session  
 
@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
     app.container = container
 
     base_router = APIRouter(prefix=PREFIX)
-    base_router.include_router(venta_router.router)
+    base_router.include_router(v1_router)
 
     @base_router.get("/")
     @base_router.get("/ready")

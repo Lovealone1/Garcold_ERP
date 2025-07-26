@@ -8,10 +8,14 @@ from app.v1_0.repositories import (
     EstadoRepository,
     DetalleUtilidadRepository,
     UtilidadRepository,
-    BancoRepository
+    BancoRepository, 
+    CompraRepository,
+    DetalleCompraRepository,
+    ProveedorRepository
 )
 
 from app.v1_0.services.venta_service import VentaService
+from app.v1_0.services.compra_service import CompraService
 
 
 class APIContainer(containers.DeclarativeContainer):
@@ -29,6 +33,10 @@ class APIContainer(containers.DeclarativeContainer):
     detalle_utilidad_repository = providers.Singleton(DetalleUtilidadRepository, session_factory=db_session)
     utilidad_repository = providers.Singleton(UtilidadRepository, session_factory=db_session)
     banco_repository = providers.Singleton(BancoRepository, session_factory=db_session)
+    compra_repository = providers.Singleton(CompraRepository, session_factory=db_session)
+    detalle_compra_repository = providers.Singleton(DetalleCompraRepository, session_factory=db_session)
+    proveedor_repository = providers.Singleton(ProveedorRepository, session_factory=db_session)
+
 
     venta_service = providers.Singleton(
         VentaService,
@@ -40,4 +48,14 @@ class APIContainer(containers.DeclarativeContainer):
         detalle_utilidad_repository=detalle_utilidad_repository,
         utilidad_repository=utilidad_repository,
         banco_repository=banco_repository
+    )
+
+    compra_service = providers.Singleton(
+        CompraService,
+        compra_repository=compra_repository,
+        detalle_repository=detalle_compra_repository,
+        producto_repository=producto_repository,
+        banco_repository=banco_repository,
+        proveedor_repository=proveedor_repository,
+        estado_repository=estado_repository
     )

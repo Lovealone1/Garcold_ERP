@@ -33,7 +33,7 @@ class VentaRequestDTO(BaseModel):
         schema_extra = {
             "example": {
                 "cliente_id": 1,
-                "banco_id": 2,
+                "banco_id": 1,
                 "estado_id": 3,
                 "carrito": [
                     {

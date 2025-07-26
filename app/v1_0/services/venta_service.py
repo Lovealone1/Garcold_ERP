@@ -16,7 +16,6 @@ from app.v1_0.repositories import (
     BancoRepository
 )
 
-
 class VentaService:
     def __init__(
         self,
@@ -178,7 +177,6 @@ class VentaService:
             fecha=venta.fecha
         )
     
-
     async def eliminar_venta(self, venta_id: int) -> bool:
         venta = await self.venta_repository.get_by_id(venta_id)
         if not venta:

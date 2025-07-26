@@ -7,6 +7,9 @@ from .detalle_venta_repository import DetalleVentaRepository
 from .detalle_utilidad_repository import DetalleUtilidadRepository
 from .utiliadad_repository import UtilidadRepository
 from .estado_repository import EstadoRepository
+from .compra_repository import CompraRepository
+from .detalle_compra_repository import DetalleCompraRepository
+from .proveedor_repository import ProveedorRepository
 
 __all__ = [
     "BaseRepository",
@@ -17,5 +20,8 @@ __all__ = [
     "DetalleVentaRepository",
     "DetalleUtilidadRepository",
     "UtilidadRepository",
-    "EstadoRepository"
+    "EstadoRepository",
+    "CompraRepository",
+    "DetalleCompraRepository",
+    "ProveedorRepository"
 ]

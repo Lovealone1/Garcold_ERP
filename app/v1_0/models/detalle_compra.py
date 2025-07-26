@@ -10,7 +10,6 @@ class DetalleCompra(Base):
     producto_id = Column(Integer, ForeignKey("producto.id"), nullable=False)
     cantidad = Column(Integer, nullable=False)
     precio = Column(Float, nullable=False)
-    total = Column(Float, nullable=False)
     compra_id = Column(Integer, ForeignKey("compra.id"), nullable=False)
     fecha_creacion = Column(DateTime, default=datetime.now)
 

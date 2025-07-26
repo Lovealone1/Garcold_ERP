@@ -61,3 +61,4 @@ class DetalleVentaRepository(BaseRepository):
             delete(DetalleVenta).where(DetalleVenta.venta_id == venta_id)
         )
         await session.commit()
+
