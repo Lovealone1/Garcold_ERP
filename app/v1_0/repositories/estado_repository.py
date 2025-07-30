@@ -19,7 +19,6 @@ class EstadoRepository(BaseRepository[Estado]):
         """
         Recupera un Estado por su ID.
         """
-        # Podemos usar el método genérico de BaseRepository:
         return await super().get_by_id(estado_id, session)
 
     async def get_by_nombre(

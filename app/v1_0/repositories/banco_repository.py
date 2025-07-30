@@ -83,7 +83,7 @@ class BancoRepository(BaseRepository[Banco]):
         Decrementa el saldo de un Banco (si hay suficiente saldo) y actualiza la fecha.
         """
         banco = await self.get_by_id(banco_id, session)
-        if not banco or banco.saldo < monto:
+        if not banco:
             return None
 
         banco.saldo -= monto

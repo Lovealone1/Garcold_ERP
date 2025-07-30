@@ -13,6 +13,10 @@ class ApplicationContainer(containers.DeclarativeContainer):
             "app.v1_0.routers.venta_router",
             "app.v1_0.routers.compra_router", 
             "app.v1_0.routers.pago_venta_router",
+            "app.v1_0.routers.pago_compra_router",
+            "app.v1_0.routers.gasto_router",
+            "app.v1_0.routers.credito_router",
+            "app.v1_0.routers.inversion_router"
             ]
     )
 

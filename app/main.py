@@ -38,11 +38,9 @@ def create_app() -> FastAPI:
     app.include_router(base_router)
     return app
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.container.init_resources()
     yield
-
 
 app = create_app()

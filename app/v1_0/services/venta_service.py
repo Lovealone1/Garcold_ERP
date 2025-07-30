@@ -13,7 +13,8 @@ from app.v1_0.repositories import (
     EstadoRepository,
     DetalleUtilidadRepository,
     UtilidadRepository,
-    BancoRepository
+    BancoRepository, 
+    DetallePagoVentaRepository
 )
 
 class VentaService:
@@ -34,7 +35,8 @@ class VentaService:
         estado_repository: EstadoRepository,
         detalle_utilidad_repository: DetalleUtilidadRepository,
         utilidad_repository: UtilidadRepository,
-        banco_repository: BancoRepository
+        banco_repository: BancoRepository,
+        pago_venta_repository: DetallePagoVentaRepository
     ):
         self.venta_repository = venta_repository
         self.detalle_repository = detalle_repository
@@ -44,6 +46,7 @@ class VentaService:
         self.detalle_utilidad_repository = detalle_utilidad_repository
         self.utilidad_repository = utilidad_repository
         self.banco_repository = banco_repository
+        self.pago_venta_repository = pago_venta_repository
 
     def agregar_detalle_venta(self, carrito: List[dict]) -> List[DetalleVentaDTO]:
         """
@@ -244,11 +247,17 @@ class VentaService:
         db: AsyncSession
     ) -> None:
         """
-        Elimina una venta y revierte inventario, saldos y utilidades en una transacción.
+        Elimina una venta y revierte en una única transacción:
+         1) Devuelve al banco cada monto pagado por adelantado.
+         2) Borra los registros de pago.
+         3) Reversa stock de productos.
+         4) Reversa saldo de cliente o banco según tipo.
+         5) Borra utilidades y detalles.
+         6) Finalmente, borra la venta.
 
         Args:
-            venta_id: ID de la venta a eliminar.
-            db: Sesión asíncrona de SQLAlchemy.
+            venta_id (int): ID de la venta a eliminar.
+            db (AsyncSession): Sesión asíncrona de SQLAlchemy.
 
         Raises:
             HTTPException 404: Si la venta no existe.
@@ -258,24 +267,44 @@ class VentaService:
             if not venta:
                 raise HTTPException(404, "Venta no encontrada")
 
-            detalles = await self.detalle_repository.get_by_venta_id(venta_id, session=db)
-            estado   = await self.estado_repository.get_by_id(venta.estado_id, session=db)
-            es_credito = bool(estado and estado.nombre.lower() == "venta credito")
+            pagos = await self.pago_venta_repository.list_by_venta(venta_id, session=db)
+            for pago in pagos:
+                await self.banco_repository.disminuir_saldo(
+                    pago.banco_id,
+                    pago.monto,
+                    session=db
+                )
+            await self.pago_venta_repository.delete_by_venta(venta_id, session=db)
 
+            detalles = await self.detalle_repository.get_by_venta_id(venta_id, session=db)
             for d in detalles:
                 await self.producto_repository.aumentar_cantidad(
-                    d.producto_id, d.cantidad, session=db
+                    d.producto_id,
+                    d.cantidad,
+                    session=db
                 )
+
+            estado = await self.estado_repository.get_by_id(venta.estado_id, session=db)
+            es_credito = bool(estado and estado.nombre.lower() == "venta credito")
 
             if es_credito:
                 cliente = await self.cliente_repository.get_by_id(venta.cliente_id, session=db)
                 if cliente:
                     nuevo_saldo = max((cliente.saldo or 0) - venta.total, 0)
-                    await self.cliente_repository.update_saldo(cliente.id, nuevo_saldo, session=db)
+                    await self.cliente_repository.update_saldo(
+                        cliente.id,
+                        nuevo_saldo,
+                        session=db
+                    )
             else:
-                await self.banco_repository.disminuir_saldo(venta.banco_id, venta.total, session=db)
+                await self.banco_repository.disminuir_saldo(
+                    venta.banco_id,
+                    venta.total,
+                    session=db
+                )
 
             await self.detalle_utilidad_repository.delete_by_venta(venta_id, session=db)
             await self.utilidad_repository.delete_by_venta(venta_id, session=db)
             await self.detalle_repository.delete_by_venta(venta_id, session=db)
+
             await self.venta_repository.delete_venta(venta_id, session=db)

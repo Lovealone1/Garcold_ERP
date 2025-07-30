@@ -14,7 +14,8 @@ from app.v1_0.repositories import (
     ProductoRepository,
     BancoRepository,
     ProveedorRepository,
-    EstadoRepository
+    EstadoRepository,
+    DetallePagoCompraRepository
 )
 
 class CompraService:
@@ -32,7 +33,8 @@ class CompraService:
         producto_repository: ProductoRepository,
         banco_repository: BancoRepository,
         proveedor_repository: ProveedorRepository,
-        estado_repository: EstadoRepository
+        estado_repository: EstadoRepository,
+        pago_compra_repository: DetallePagoCompraRepository
     ):
         self.compra_repository = compra_repository
         self.detalle_repository = detalle_repository
@@ -40,6 +42,7 @@ class CompraService:
         self.banco_repository = banco_repository
         self.proveedor_repository = proveedor_repository
         self.estado_repository = estado_repository
+        self.pago_compra_repository = pago_compra_repository
 
     def construir_detalles(self, carrito: List[dict]) -> List[DetalleCompraDTO]:
         """
@@ -189,19 +192,25 @@ class CompraService:
         )
 
     async def eliminar_compra(
-    self,
-    compra_id: int,
-    db: AsyncSession
+        self,
+        compra_id: int,
+        db: AsyncSession
     ) -> bool:
         """
-        Elimina una compra y revierte inventario y saldos asociados en una transacción.
+        Elimina una compra y revierte:
+          1) Los pagos realizados, devolviendo su monto al banco.
+          2) El inventario (disminuye la cantidad comprada).
+          3) El saldo bancario inicial si no fue compra a crédito.
+          4) Finalmente borra los detalles de compra y la propia compra.
+
+        Todo en una única transacción.
 
         Args:
-            compra_id: ID de la compra a eliminar.
-            db: Sesión asíncrona de SQLAlchemy.
+            compra_id (int): ID de la compra a eliminar.
+            db (AsyncSession): Sesión asíncrona de SQLAlchemy.
 
         Returns:
-            True si la compra fue eliminada correctamente.
+            bool: True si se eliminó correctamente.
 
         Raises:
             HTTPException 404: Si la compra no existe.
@@ -210,19 +219,31 @@ class CompraService:
             compra = await self.compra_repository.get_by_id(compra_id, session=db)
             if not compra:
                 raise HTTPException(404, "Compra no encontrada")
-            
-            detalles   = await self.detalle_repository.get_by_compra_id(compra_id, session=db)
-            estado     = await self.estado_repository.get_by_id(compra.estado_id, session=db)
-            es_credito = bool(estado and estado.nombre.lower() == "compra credito")
 
+            pagos = await self.pago_compra_repository.list_by_compra(compra_id, session=db)
+            for pago in pagos:
+                await self.banco_repository.aumentar_saldo(
+                    pago.banco_id,
+                    pago.monto,
+                    session=db
+                )
+            await self.pago_compra_repository.delete_by_compra(compra_id, session=db)
+
+            detalles = await self.detalle_repository.get_by_compra_id(compra_id, session=db)
             for d in detalles:
                 await self.producto_repository.disminuir_cantidad(
-                    d.producto_id, d.cantidad, session=db
+                    d.producto_id,
+                    d.cantidad,
+                    session=db
                 )
 
+            estado = await self.estado_repository.get_by_id(compra.estado_id, session=db)
+            es_credito = bool(estado and estado.nombre.lower() == "compra credito")
             if not es_credito:
                 await self.banco_repository.aumentar_saldo(
-                    compra.banco_id, compra.total, session=db
+                    compra.banco_id,
+                    compra.total,
+                    session=db
                 )
 
             await self.detalle_repository.delete_by_compra(compra_id, session=db)

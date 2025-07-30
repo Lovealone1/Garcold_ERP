@@ -12,7 +12,10 @@ from .detalle_compra_repository import DetalleCompraRepository
 from .proveedor_repository import ProveedorRepository
 from .detalle_pago_venta_repository import DetallePagoVentaRepository
 from .detalle_pago_compra_repository import DetallePagoCompraRepository
-
+from .gasto_repository import GastoRepository
+from .categoria_gasto_repository import CategoriaGastosRepository
+from .credito_repository import CreditoRepository
+from .inversion_repository import InversionRepository   
 __all__ = [
     "BaseRepository",
     "ClienteRepository",
@@ -27,5 +30,9 @@ __all__ = [
     "DetalleCompraRepository",
     "ProveedorRepository",
     "DetallePagoVentaRepository",
-    "DetallePagoCompraRepository"
+    "DetallePagoCompraRepository",
+    "GastoRepository",
+    "CategoriaGastosRepository",
+    "CreditoRepository",
+    "InversionRepository"
 ]

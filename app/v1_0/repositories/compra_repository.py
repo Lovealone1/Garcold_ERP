@@ -2,7 +2,7 @@
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from app.v1_0.models import Compra
 from app.v1_0.entities import CompraDTO
@@ -50,17 +50,24 @@ class CompraRepository(BaseRepository[Compra]):
 
     async def update_compra(
         self,
-        compra: Compra,
-        data: dict,
+        compra_id: int,
+        data: Dict[str, Any],
         session: AsyncSession
-    ) -> Compra:
+    ) -> Optional[Compra]:
         """
-        Actualiza campos de una Compra existente y hace flush para
-        propagar cambios sin commit.
+        Actualiza campos de una Compra existente, acepta un dict de {campo:valor}.
+        No hace commit: deja flush/commit a la transacción externa.
         """
+        compra = await session.get(Compra, compra_id)
+        if not compra:
+            return None
+
         for field, value in data.items():
             setattr(compra, field, value)
+
+        # aplica cambios en la misma transacción
         await session.flush()
+        await session.refresh(compra)
         return compra
 
     async def delete_compra(

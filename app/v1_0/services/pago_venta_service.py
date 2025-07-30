@@ -23,20 +23,13 @@ class PagoVentaService:
     def __init__(
         self,
         venta_repository: VentaRepository,
-        compra_repository: CompraRepository,
         estado_repository: EstadoRepository,
         pago_venta_repository: DetallePagoVentaRepository,
-        pago_compra_repository: DetallePagoCompraRepository,
         banco_repository: BancoRepository
     ):
-        """
-        Inicializa con los repositorios necesarios.
-        """
         self.venta_repo = venta_repository
-        self.compra_repo = compra_repository
         self.estado_repo = estado_repository
         self.pago_venta_repo = pago_venta_repository
-        self.pago_compra_repo = pago_compra_repository
         self.banco_repo = banco_repository
     async def crear_pago_venta(
             self,
@@ -45,10 +38,24 @@ class PagoVentaService:
             monto: float,
             db: AsyncSession
         ) -> PagoResponseDTO:
-            """
-            Registra un pago sobre una venta a crédito, decrementando su saldo.
-            Si al aplicar el pago el saldo restante queda en 0, cambia el estado
-            de la venta a "venta cancelada".
+            """Registra un pago sobre una venta a crédito.
+
+            Descuenta el monto del saldo pendiente de la venta y lo añade al saldo del banco.
+            Si tras el pago el saldo de la venta queda en cero, actualiza su estado a “venta cancelada”.
+
+            Args:
+                venta_id (int): ID de la venta a la que se aplica el pago.
+                banco_id (int): ID del banco que recibe el pago.
+                monto (float): Monto que se va a abonar.
+                db (AsyncSession): Sesión asíncrona de SQLAlchemy.
+
+            Returns:
+                PagoResponseDTO: DTO con los datos del pago y estado actualizado de la venta.
+
+            Raises:
+                HTTPException 404: Si la venta o el banco no existen.
+                HTTPException 400: Si la venta no está a crédito, no tiene saldo pendiente,
+                                o el monto es inválido/excede el saldo.
             """
             async with db.begin():
                 venta = await self.venta_repo.get_by_id(venta_id, session=db)
@@ -111,19 +118,22 @@ class PagoVentaService:
         venta_id: int,
         db: AsyncSession
     ) -> List[PagoResponseDTO]:
+        """Obtiene todos los pagos realizados sobre una venta.
+
+        Args:
+            venta_id (int): ID de la venta cuyo historial de pagos se consulta.
+            db (AsyncSession): Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            List[PagoResponseDTO]: Lista de DTOs con la información de cada pago.
         """
-        Devuelve todos los pagos de una venta, serializados como PagoResponseDTO.
-        """
-        # 1) Recuperar todos los pagos
         pagos = await self.pago_venta_repo.list_by_venta(venta_id, session=db)
         if not pagos:
             return []
 
-        # 2) Recuperar datos comunes de la venta (total)
         venta = await self.venta_repo.get_by_id(venta_id, session=db)
         saldo_restante = venta.saldo_restante if venta else 0.0
 
-        # 3) Para cada pago, buscar el nombre de banco y construir el DTO
         result: List[PagoResponseDTO] = []
         for pago in pagos:
             banco = await self.banco_repo.get_by_id(pago.banco_id, session=db)
@@ -143,23 +153,30 @@ class PagoVentaService:
         pago_id: int,
         db: AsyncSession
     ) -> bool:
-        """
-        Elimina un pago de venta. Si la venta estaba en 'venta cancelada',
-        la pasa de nuevo a 'venta credito', devuelve el monto al saldo pendiente
-        y descuenta ese mismo monto del banco.
+        """Elimina un pago de venta.
+
+        Si la venta estaba en “venta cancelada”, la cambia a “venta credito”,
+        restaura el saldo pendiente y descuenta del banco el monto del pago eliminado.
+
+        Args:
+            pago_id (int): ID del pago a eliminar.
+            db (AsyncSession): Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            bool: True si el pago existía y se eliminó; False en caso contrario.
+
+        Raises:
+            HTTPException 404: Si la venta asociada no existe.
         """
         async with db.begin():
-            # 1) Recuperar el registro de pago
             pago = await self.pago_venta_repo.get_by_id(pago_id, session=db)
             if not pago:
                 return False
 
-            # 2) Recuperar la venta asociada
             venta = await self.venta_repo.get_by_id(pago.venta_id, session=db)
             if not venta:
                 raise HTTPException(404, "Venta asociada no encontrada")
 
-            # 3) Si la venta estaba saldada ("venta cancelada"), volverla a crédito
             estado_actual = await self.estado_repo.get_by_id(venta.estado_id, session=db)
             if estado_actual and estado_actual.nombre.lower() == "venta cancelada":
                 estado_credito = await self.estado_repo.get_by_nombre("venta credito", session=db)
@@ -170,7 +187,6 @@ class PagoVentaService:
                         session=db
                     )
 
-            # 4) Revertir el saldo pendiente en la venta
             nuevo_saldo = (venta.saldo_restante or 0) + pago.monto
             await self.venta_repo.update_venta(
                 venta.id,
@@ -178,14 +194,12 @@ class PagoVentaService:
                 session=db
             )
 
-            # 5) Quitar el monto del banco
             await self.banco_repo.disminuir_saldo(
                 pago.banco_id,
                 pago.monto,
                 session=db
             )
 
-            # 6) Eliminar el pago
             await self.pago_venta_repo.delete_pago(pago_id, session=db)
 
         return True

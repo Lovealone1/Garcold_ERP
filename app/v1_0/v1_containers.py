@@ -13,18 +13,25 @@ from app.v1_0.repositories import (
     DetalleCompraRepository,
     ProveedorRepository,
     DetallePagoVentaRepository,
-    DetallePagoCompraRepository
+    DetallePagoCompraRepository, 
+    GastoRepository,
+    CategoriaGastosRepository,
+    CreditoRepository, 
+    InversionRepository
 )
 from app.v1_0.services.venta_service import VentaService
 from app.v1_0.services.compra_service import CompraService
 from app.v1_0.services.pago_venta_service import PagoVentaService
+from app.v1_0.services.pago_compra_service import PagoCompraService
+from app.v1_0.services.gasto_service import GastoService
+from app.v1_0.services.credito_service import CreditoService
+from app.v1_0.services.inversion_service import InversionService
 
 class APIContainer(containers.DeclarativeContainer):
     """
     Contenedor para repositorios y servicios de la API de ventas.
     """
-
-    # Repositorios ya no reciben session_factory
+    # Repositorios
     venta_repository = providers.Singleton(VentaRepository)
     detalle_venta_repository = providers.Singleton(DetalleVentaRepository)
     producto_repository = providers.Singleton(ProductoRepository)
@@ -38,6 +45,10 @@ class APIContainer(containers.DeclarativeContainer):
     proveedor_repository = providers.Singleton(ProveedorRepository)
     detalle_pago_venta_repository = providers.Singleton(DetallePagoVentaRepository)
     detalle_pago_compra_repository = providers.Singleton(DetallePagoCompraRepository)
+    gasto_repository = providers.Singleton(GastoRepository)
+    categoria_gastos_repository = providers.Singleton(CategoriaGastosRepository)
+    credito_repository = providers.Singleton(CreditoRepository)
+    inversion_repository = providers.Singleton(InversionRepository)
 
     # Servicios
     venta_service = providers.Singleton(
@@ -50,6 +61,7 @@ class APIContainer(containers.DeclarativeContainer):
         detalle_utilidad_repository=detalle_utilidad_repository,
         utilidad_repository=utilidad_repository,
         banco_repository=banco_repository,
+        pago_venta_repository=detalle_pago_venta_repository
     )
 
     compra_service = providers.Singleton(
@@ -60,14 +72,38 @@ class APIContainer(containers.DeclarativeContainer):
         banco_repository=banco_repository,
         proveedor_repository=proveedor_repository,
         estado_repository=estado_repository,
+        pago_compra_repository=detalle_pago_compra_repository
     )
 
     pago_venta_service = providers.Singleton(
         PagoVentaService,
         venta_repository=venta_repository,
+        estado_repository=estado_repository,
+        pago_venta_repository=detalle_pago_venta_repository,
+        banco_repository=banco_repository
+    )
+
+    pago_compra_service = providers.Singleton(
+        PagoCompraService,
         compra_repository=compra_repository,
         estado_repository=estado_repository,
-        pago_venta_repository=detalle_pago_venta_repository, 
         pago_compra_repository=detalle_pago_compra_repository,
         banco_repository=banco_repository
+    )
+
+    gasto_service = providers.Singleton(
+        GastoService,  
+        gasto_repository=gasto_repository,
+        banco_repository=banco_repository,
+        categoria_repository=categoria_gastos_repository
+    )
+
+    credito_service = providers.Singleton(
+        CreditoService,
+        credito_repository=credito_repository
+    )
+
+    inversion_service = providers.Singleton(
+        InversionService,
+        inversion_repository=inversion_repository
     )
