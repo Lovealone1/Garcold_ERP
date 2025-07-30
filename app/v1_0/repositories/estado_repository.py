@@ -1,7 +1,7 @@
 # app/v1_0/repositories/estado_repository.py
 
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Estado
@@ -28,8 +28,10 @@ class EstadoRepository(BaseRepository[Estado]):
         session: AsyncSession
     ) -> Optional[Estado]:
         """
-        Recupera un Estado por su nombre exacto.
+        Recupera un Estado por su nombre, ignorando mayúsculas/minúsculas.
         """
-        stmt = select(Estado).where(Estado.nombre == nombre)
+        stmt = select(Estado).where(
+            func.lower(Estado.nombre) == nombre.lower()
+        )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()

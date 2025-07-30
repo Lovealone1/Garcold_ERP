@@ -20,3 +20,8 @@ class Venta(Base):
     banco = relationship("Banco")
     detalles = relationship("DetalleVenta", back_populates="venta", cascade="all, delete-orphan")
     utilidad = relationship("Utilidad", back_populates="venta", cascade="all, delete-orphan", uselist=False)
+    pagos_venta     = relationship(
+        "DetallePagoVenta",
+        back_populates="venta",
+        cascade="all, delete-orphan"
+    )

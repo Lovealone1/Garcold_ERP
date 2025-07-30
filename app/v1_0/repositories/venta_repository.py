@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Venta
@@ -43,20 +43,40 @@ class VentaRepository(BaseRepository[Venta]):
     async def update_venta(
         self,
         venta_id: int,
-        dto: VentaDTO,
+        data: Union[VentaDTO, Dict[str, Any]],
         session: AsyncSession
     ) -> Optional[Venta]:
         """
-        Actualiza los campos de una Venta existente según el DTO.
+        Actualiza los campos de una Venta existente. Acepta un DTO o un dict
+        con los nombres de campo y valores a modificar. No hace commit; deja
+        el flush/commit a la transacción externa.
+
+        Args:
+            venta_id: ID de la venta a actualizar.
+            data:     VentaDTO o dict con los campos a cambiar.
+            session:  Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            La entidad Venta actualizada, o None si no existe.
         """
-        venta = await self.get_by_id(venta_id, session)
+        # Obtener la entidad desde la sesión activa
+        venta = await session.get(Venta, venta_id)
         if not venta:
             return None
 
-        for field, value in dto.model_dump(exclude_unset=True).items():
+        # Normalizar origen de datos
+        if isinstance(data, dict):
+            updates = data
+        else:
+            updates = data.model_dump(exclude_unset=True)
+
+        # Aplicar cambios
+        for field, value in updates.items():
             setattr(venta, field, value)
 
-        await self.update(venta, session)
+        # Flush y refresh en lugar de commit
+        await session.flush()
+        await session.refresh(venta)
         return venta
 
     async def delete_venta(

@@ -17,3 +17,8 @@ class Compra(Base):
     proveedor = relationship("Proveedor")
     banco = relationship("Banco")
     detalles = relationship("DetalleCompra", back_populates="compra", cascade="all, delete-orphan")
+    pagos_compra = relationship(
+        "DetallePagoCompra",
+        back_populates="compra",
+        cascade="all, delete-orphan"
+    )
