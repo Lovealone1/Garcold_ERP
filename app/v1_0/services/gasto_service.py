@@ -2,13 +2,14 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import GastoDTO
+from app.v1_0.entities import GastoDTO, TransaccionDTO
 from app.v1_0.schemas.gasto_schema import GastoResponseDTO
 from app.v1_0.repositories import (
     GastoRepository,
     BancoRepository,
     CategoriaGastosRepository,
 )
+from app.v1_0.services.transaccion_service import TransaccionService
 
 class GastoService:
     """
@@ -20,6 +21,7 @@ class GastoService:
         gasto_repository: GastoRepository,
         banco_repository: BancoRepository,
         categoria_repository: CategoriaGastosRepository,
+        transaccion_service: TransaccionService,
     ):
         """
         Inicializa el servicio con los repositorios necesarios.
@@ -32,7 +34,7 @@ class GastoService:
         self.gasto_repo = gasto_repository
         self.banco_repo = banco_repository
         self.categoria_repo = categoria_repository
-
+        self.transaccion_service = transaccion_service
     async def crear_gasto(
         self,
         gasto_dto: GastoDTO,
@@ -53,17 +55,14 @@ class GastoService:
             HTTPException 400: Si el monto es inválido o excede el saldo del banco.
         """
         async with db.begin():
-            # Validar banco
             banco = await self.banco_repo.get_by_id(gasto_dto.banco_id, session=db)
             if not banco:
                 raise HTTPException(404, "Banco no encontrado")
-            # Validar categoría
             categoria = await self.categoria_repo.get_by_id(
                 gasto_dto.categoria_gasto_id, session=db
             )
             if not categoria:
                 raise HTTPException(404, "Categoría de gasto no encontrada")
-            # Validar monto
             if gasto_dto.monto <= 0:
                 raise HTTPException(400, "El monto del gasto debe ser mayor que cero")
             if banco.saldo < gasto_dto.monto:
@@ -71,14 +70,21 @@ class GastoService:
                     400,
                     f"Saldo insuficiente en el banco ({banco.saldo:.2f})"
                 )
-            # Descontar del banco
             await self.banco_repo.disminuir_saldo(
                 gasto_dto.banco_id, gasto_dto.monto, session=db
             )
-            # Crear el gasto
             gasto = await self.gasto_repo.create_gasto(gasto_dto, session=db)
 
-        # Fuera de la transacción, construir el DTO de respuesta
+            await self.transaccion_service.insertar_transaccion(
+                            TransaccionDTO(
+                                banco_id=gasto_dto.banco_id,
+                                monto=gasto_dto.monto,
+                                tipo_id=5,  # 5 = Gasto
+                                descripcion=f"Gasto {categoria.nombre} {gasto.id}"
+                            ),
+                            db=db
+                        )
+
         return GastoResponseDTO(
             id=gasto.id,
             categoria=categoria.nombre,
@@ -105,7 +111,6 @@ class GastoService:
         gastos = await self.gasto_repo.get_by_categoria(categoria_id, session=db)
         result: List[GastoResponseDTO] = []
 
-        # Recuperar nombres comunes
         categoria = await self.categoria_repo.get_by_id(categoria_id, session=db)
         nombre_categoria = categoria.nombre if categoria else "Desconocida"
 
@@ -147,10 +152,9 @@ class GastoService:
             if not banco:
                 raise HTTPException(404, "Banco asociado al gasto no encontrado")
 
-            # Devolver monto al banco
             await self.banco_repo.aumentar_saldo(
                 gasto.banco_id, gasto.monto, session=db
             )
-            # Eliminar el gasto
             deleted = await self.gasto_repo.delete_gasto(gasto_id, session=db)
+            await self.transaccion_service.eliminar_transacciones_gasto(gasto_id, db=db)
             return deleted

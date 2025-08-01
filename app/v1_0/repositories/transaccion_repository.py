@@ -1,5 +1,4 @@
-# app/v1_0/repositories/transaccion_repository.py
-
+import re
 from typing import List
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,3 +112,84 @@ class TransaccionRepository(BaseRepository[Transaccion]):
             return False
         await self.delete(transaccion, session)
         return True
+
+    async def get_ids_for_pago_compra(
+            self,
+            compra_id: int,
+            session: AsyncSession
+        ) -> List[int]:
+            """
+            Busca todas las transacciones cuya descripción contenga 'pago compra {compra_id}'
+            y devuelve sus IDs.
+            """
+            pattern = f"%pago compra {compra_id}%"
+            stmt = select(Transaccion.id).where(Transaccion.descripcion.ilike(pattern))
+            result = await session.execute(stmt)
+            return result.scalars().all()
+
+    async def get_ids_for_pago_venta(
+        self,
+        venta_id: int,
+        session: AsyncSession
+    ) -> List[int]:
+        """
+        Busca todas las transacciones cuya descripción contenga 'pago venta {venta_id}'
+        y devuelve sus IDs.
+        """
+        pattern = f"%pago venta {venta_id}%"
+        stmt = select(Transaccion.id).where(Transaccion.descripcion.ilike(pattern))
+        result = await session.execute(stmt)
+        return result.scalars().all()
+    
+    async def get_ids_for_gasto(
+        self,
+        gasto_id: int,
+        session: AsyncSession
+    ) -> List[int]:
+        """
+        Busca todas las transacciones cuya descripción contenga 'Gasto {gasto_id}'
+        y devuelve sus IDs.
+
+        Args:
+            gasto_id (int): ID del gasto para filtrar en la descripción.
+            session (AsyncSession): Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            List[int]: Lista de IDs de transacciones que coinciden.
+        """
+        pattern = f"%Gasto% {gasto_id}%"
+        stmt = select(Transaccion.id).where(Transaccion.descripcion.ilike(pattern))
+        result = await session.execute(stmt)
+        return result.scalars().all()
+    
+    async def get_pago_ids_for_venta(
+        self,
+        venta_id: int,
+        session: AsyncSession
+    ) -> List[int]:
+        """
+        Busca todas las transacciones cuya descripción contenga
+        'Abono {pago_id} venta {venta_id}', extrae y devuelve los pago_id.
+
+        Args:
+            venta_id (int): ID de la venta asociada.
+            session (AsyncSession): Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            List[int]: Lista de IDs de DetallePagoVenta (pago_id).
+        """
+        pattern = f"%Abono % venta {venta_id}%"
+        stmt = select(Transaccion.descripcion).where(
+            Transaccion.descripcion.ilike(pattern)
+        )
+        result = await session.execute(stmt)
+        descs = result.scalars().all()
+
+        pago_ids: List[int] = []
+        regex = re.compile(r"Abono (\d+) venta " + re.escape(str(venta_id)), re.IGNORECASE)
+        for desc in descs:
+            match = regex.search(desc)
+            if match:
+                pago_ids.append(int(match.group(1)))
+
+        return pago_ids

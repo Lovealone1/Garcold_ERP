@@ -1,0 +1,230 @@
+from typing import Optional
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.v1_0.entities import TransaccionDTO
+from app.v1_0.models import Transaccion
+from app.v1_0.repositories import (
+    TransaccionRepository,
+    TipoTransaccionRepository,
+    BancoRepository,
+)
+from app.v1_0.schemas.transaccion_schema import TransaccionResponseDTO
+
+
+class TransaccionService:
+    """
+    Servicio para gestionar el libro mayor de transacciones.
+
+    - registrar_transaccion(): graba un asiento contable sin tocar saldos bancarios.
+    - crear_transaccion(): graba el asiento y ajusta el saldo del banco.
+    """
+
+    def __init__(
+        self,
+        transaccion_repository: TransaccionRepository,
+        tipo_transaccion_repository: TipoTransaccionRepository,
+        banco_repository: BancoRepository,
+    ):
+        self.trans_repo = transaccion_repository
+        self.tipo_repo = tipo_transaccion_repository
+        self.banco_repo = banco_repository
+
+    async def insertar_transaccion(
+        self,
+        transaccion_dto: TransaccionDTO,
+        db: AsyncSession
+    ) -> Transaccion:
+        """
+        Graba una transacción en el libro mayor sin afectar saldos de banco.
+
+        Args:
+            transaccion_dto: DTO con banco_id, tipo_id, monto y descripción opcional.
+            db:              Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            Transaccion: La entidad Transaccion recién persistida.
+        """
+        return await self.trans_repo.create_transaccion(transaccion_dto, session=db)
+
+    async def crear_transaccion(
+        self,
+        banco_id: int,
+        tipo_id: int,
+        monto: float,
+        descripcion: Optional[str],
+        db: AsyncSession
+    ) -> TransaccionResponseDTO:
+        """
+        Persiste una transacción y ajusta el saldo del banco según el tipo:
+
+          - Ingreso: aumenta saldo
+          - Retiro : disminuye saldo (verifica fondos)
+
+        Args:
+            banco_id:     ID del banco.
+            tipo_id:      ID del tipo de transacción.
+            monto:        Monto positivo.
+            descripcion:  Texto libre que describe la transacción.
+            db:           Sesión asíncrona.
+
+        Raises:
+            HTTPException 400: monto inválido, tipo no soportado o fondos insuficientes.
+            HTTPException 404: banco o tipo no encontrados.
+
+        Returns:
+            TransaccionResponseDTO: DTO con los datos de la transacción creada.
+        """
+        if monto <= 0:
+            raise HTTPException(400, "El monto debe ser mayor que cero")
+
+        async with db.begin():
+            tipo = await self.tipo_repo.get_by_id(tipo_id, session=db)
+            if not tipo:
+                raise HTTPException(404, f"Tipo de transacción {tipo_id} no encontrado")
+
+            nombre = tipo.nombre.lower()
+            if nombre not in ("ingreso", "retiro"):
+                raise HTTPException(400, f"Tipo '{tipo.nombre}' no soportado (solo Ingreso o Retiro)")
+
+            banco = await self.banco_repo.get_by_id(banco_id, session=db)
+            if not banco:
+                raise HTTPException(404, f"Banco {banco_id} no encontrado")
+
+            if nombre == "retiro":
+                if (banco.saldo or 0) < monto:
+                    raise HTTPException(400, f"Saldo insuficiente en banco (actual: {banco.saldo:.2f})")
+                await self.banco_repo.disminuir_saldo(banco_id, monto, session=db)
+            else:
+                await self.banco_repo.aumentar_saldo(banco_id, monto, session=db)
+
+            dto = TransaccionDTO(
+                banco_id=banco_id,
+                tipo_id=tipo_id,
+                monto=monto,
+                descripcion=descripcion,
+            )
+            trans = await self.trans_repo.create_transaccion(dto, session=db)
+
+        return TransaccionResponseDTO(
+            id=trans.id,
+            banco=banco.nombre,
+            tipo=tipo.nombre,
+            monto=trans.monto,
+            descripcion=trans.descripcion,
+            fecha_creacion=trans.fecha_creacion
+        )
+    
+    async def eliminar_transacciones_abonos(
+            self,
+            pago_id: int,
+            db: AsyncSession
+        ) -> int:
+            """
+            Borra todas las transacciones automáticas de pagos de venta
+            y retorna cuántas se eliminaron.
+            """
+            await self.trans_repo.delete_transaccion(pago_id, session=db)
+    
+    async def eliminar_transacciones_venta(
+        self,
+        venta_id: int,
+        db: AsyncSession
+    ) -> int:
+        """
+        Borra todas las transacciones automáticas de pagos de venta
+        y retorna cuántas se eliminaron.
+        """
+        ids = await self.trans_repo.get_ids_for_pago_venta(venta_id, session=db)
+        for tid in ids:
+            await self.trans_repo.delete_transaccion(tid, session=db)
+        return len(ids)
+
+    async def eliminar_transacciones_compra(
+            self,
+            compra_id: int,
+            db: AsyncSession
+        ) -> int:
+            """
+            Borra todas las transacciones automáticas de pagos de compra
+            y retorna cuántas se eliminaron.
+            """
+            ids = await self.trans_repo.get_ids_for_pago_compra(compra_id, session=db)
+            for tid in ids:
+                await self.trans_repo.delete_transaccion(tid, session=db)
+            return len(ids)
+    
+    async def eliminar_transacciones_gasto(
+        self,
+        gasto_id: int,
+        db: AsyncSession
+    ) -> int:
+        """
+        Borra todas las transacciones automáticas registradas para un gasto
+        (basadas en la descripción "Gasto ...") y devuelve cuántas se eliminaron.
+
+        Args:
+            gasto_id (int): ID del gasto cuyas transacciones queremos eliminar.
+            db (AsyncSession): Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            int: Número de transacciones eliminadas.
+        """
+
+        ids = await self.trans_repo.get_ids_for_gasto(gasto_id, session=db)
+
+        for tid in ids:
+            await self.trans_repo.delete_transaccion(tid, session=db)
+
+        return len(ids)
+    
+    async def eliminar_transaccion_manual(
+        self,
+        transaccion_id: int,
+        db: AsyncSession
+    ) -> bool:
+        """
+        Elimina una transacción manual (ingreso/retiro) y revierte el ajuste
+        de saldo en el banco correspondiente.
+
+        Args:
+            transaccion_id: ID de la transacción a eliminar.
+            db:             Sesión asíncrona de SQLAlchemy.
+
+        Returns:
+            bool: True si existía y fue borrada, False si no se encontró.
+
+        Raises:
+            HTTPException 404: Si banco o tipo no existen.
+            HTTPException 400: Si el banco no tiene saldo suficiente para revertir un ingreso.
+        """
+        async with db.begin():
+            trans = await self.trans_repo.get_by_id(transaccion_id, session=db)
+            if not trans:
+                return False
+
+            tipo = await self.tipo_repo.get_by_id(trans.tipo_id, session=db)
+            if not tipo:
+                raise HTTPException(404, f"Tipo de transacción {trans.tipo_id} no encontrado")
+
+            banco = await self.banco_repo.get_by_id(trans.banco_id, session=db)
+            if not banco:
+                raise HTTPException(404, f"Banco {trans.banco_id} no encontrado")
+
+            nombre = tipo.nombre.lower()
+            if nombre == "ingreso":
+                if (banco.saldo or 0) < trans.monto:
+                    raise HTTPException(
+                        400,
+                        f"Saldo insuficiente en banco para revertir ingreso ({banco.saldo:.2f})"
+                    )
+                await self.banco_repo.disminuir_saldo(banco.id, trans.monto, session=db)
+            elif nombre == "retiro":
+                await self.banco_repo.aumentar_saldo(banco.id, trans.monto, session=db)
+            else:
+                pass
+
+            await self.trans_repo.delete(trans, session=db)
+
+        return True
+

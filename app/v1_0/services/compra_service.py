@@ -5,9 +5,8 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import CompraDTO, DetalleCompraDTO
+from app.v1_0.entities import CompraDTO, DetalleCompraDTO, TransaccionDTO
 from app.v1_0.schemas.compra_schema import CompraResponse
-from app.v1_0.models import Compra
 from app.v1_0.repositories import (
     CompraRepository,
     DetalleCompraRepository,
@@ -17,6 +16,7 @@ from app.v1_0.repositories import (
     EstadoRepository,
     DetallePagoCompraRepository
 )
+from app.v1_0.services.transaccion_service import TransaccionService
 
 class CompraService:
     """
@@ -34,7 +34,8 @@ class CompraService:
         banco_repository: BancoRepository,
         proveedor_repository: ProveedorRepository,
         estado_repository: EstadoRepository,
-        pago_compra_repository: DetallePagoCompraRepository
+        pago_compra_repository: DetallePagoCompraRepository,
+        transaccion_service: TransaccionService
     ):
         self.compra_repository = compra_repository
         self.detalle_repository = detalle_repository
@@ -43,6 +44,7 @@ class CompraService:
         self.proveedor_repository = proveedor_repository
         self.estado_repository = estado_repository
         self.pago_compra_repository = pago_compra_repository
+        self.transaccion_service = transaccion_service
 
     def construir_detalles(self, carrito: List[dict]) -> List[DetalleCompraDTO]:
         """
@@ -142,6 +144,15 @@ class CompraService:
                 await self.banco_repository.disminuir_saldo(
                     banco_id, total_compra, session=db
                 )
+                await self.transaccion_service.insertar_transaccion(
+                        TransaccionDTO(
+                            banco_id=banco_id,
+                            monto=total_compra,
+                            tipo_id=4,  
+                            descripcion=f"Pago venta {compra.id}"
+                        ),
+                        db=db
+                    )
             proveedor = await self.proveedor_repository.get_by_id(compra.proveedor_id, session=db)
             banco     = await self.banco_repository.get_by_id(compra.banco_id, session=db)
             estado    = await self.estado_repository.get_by_id(compra.estado_id, session=db)
@@ -248,6 +259,5 @@ class CompraService:
 
             await self.detalle_repository.delete_by_compra(compra_id, session=db)
             await self.compra_repository.delete_compra(compra_id, session=db)
-
-        return True
+            await self.transaccion_service.eliminar_transacciones_compra(compra_id, db=db)
 

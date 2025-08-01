@@ -3,17 +3,15 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import DetallePagoVentaDTO, DetallePagoCompraDTO
-from app.v1_0.models import DetallePagoVenta, DetallePagoCompra
+from app.v1_0.entities import DetallePagoVentaDTO, TransaccionDTO
 from app.v1_0.schemas.pago_venta_schema import PagoResponseDTO  
 from app.v1_0.repositories import (
     VentaRepository,
-    CompraRepository,
     EstadoRepository,
     DetallePagoVentaRepository,
-    DetallePagoCompraRepository, 
     BancoRepository
 )
+from app.v1_0.services.transaccion_service import TransaccionService
 
 class PagoVentaService:
     """
@@ -25,12 +23,14 @@ class PagoVentaService:
         venta_repository: VentaRepository,
         estado_repository: EstadoRepository,
         pago_venta_repository: DetallePagoVentaRepository,
-        banco_repository: BancoRepository
+        banco_repository: BancoRepository,
+        transaccion_service: TransaccionService
     ):
         self.venta_repo = venta_repository
         self.estado_repo = estado_repository
         self.pago_venta_repo = pago_venta_repository
         self.banco_repo = banco_repository
+        self.transaccion_service = transaccion_service
     async def crear_pago_venta(
             self,
             venta_id: int,
@@ -101,6 +101,15 @@ class PagoVentaService:
 
                 await self.banco_repo.aumentar_saldo(
                     banco_id, monto, session=db
+                )
+                await self.transaccion_service.insertar_transaccion(
+                    TransaccionDTO(
+                        banco_id=banco_id,
+                        monto=monto,
+                        tipo_id=3,
+                        descripcion=f"Abono compra {venta_id}"
+                    ),
+                    db=db
                 )
                 banco = await self.banco_repo.get_by_id(banco_id, session=db)
 
@@ -201,7 +210,7 @@ class PagoVentaService:
             )
 
             await self.pago_venta_repo.delete_pago(pago_id, session=db)
-
+            await self.transaccion_service.eliminar_transacciones_abonos(pago_id, db=db)
         return True
 
 

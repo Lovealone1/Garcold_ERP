@@ -3,7 +3,13 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import VentaDTO, DetalleVentaDTO, DetalleUtilidadDTO, UtilidadDTO
+from app.v1_0.entities import (
+    VentaDTO,
+    DetalleVentaDTO,
+    UtilidadDTO,
+    TransaccionDTO,
+    DetalleUtilidadDTO
+)
 from app.v1_0.schemas.venta_schema import VentaResponse
 from app.v1_0.repositories import (
     VentaRepository,
@@ -16,7 +22,7 @@ from app.v1_0.repositories import (
     BancoRepository, 
     DetallePagoVentaRepository
 )
-
+from app.v1_0.services.transaccion_service import TransaccionService
 class VentaService:
     """
     Servicio que orquesta la lógica de negocio para el manejo de Ventas:
@@ -36,7 +42,8 @@ class VentaService:
         detalle_utilidad_repository: DetalleUtilidadRepository,
         utilidad_repository: UtilidadRepository,
         banco_repository: BancoRepository,
-        pago_venta_repository: DetallePagoVentaRepository
+        pago_venta_repository: DetallePagoVentaRepository,
+        transaccion_service: TransaccionService
     ):
         self.venta_repository = venta_repository
         self.detalle_repository = detalle_repository
@@ -47,6 +54,7 @@ class VentaService:
         self.utilidad_repository = utilidad_repository
         self.banco_repository = banco_repository
         self.pago_venta_repository = pago_venta_repository
+        self.transaccion_service = transaccion_service
 
     def agregar_detalle_venta(self, carrito: List[dict]) -> List[DetalleVentaDTO]:
         """
@@ -82,24 +90,24 @@ class VentaService:
         db: AsyncSession
     ) -> VentaResponse:
         """
-        Finaliza una venta: valida stock, crea la venta y sus detalles,
-        ajusta inventario y saldos, calcula y registra utilidades.
+        Finaliza una venta:
+         - valida stock
+         - crea la venta y sus detalles
+         - ajusta inventario y saldos
+         - registra utilidades
+         - **si es contado**, registra la transacción “Pago venta” (tipo_id=1)
 
         Todo se ejecuta en una transacción atómica.
 
         Args:
             cliente_id: ID del cliente que realiza la compra.
-            banco_id: ID del banco para débito o crédito.
-            estado_id: ID que determina si es venta a crédito o contado.
-            detalles: Lista de DetalleVentaDTO con los productos y precios.
-            db: Sesión asíncrona de SQLAlchemy.
+            banco_id:   ID del banco para débito o crédito.
+            estado_id:  ID que determina si es venta a crédito o contado.
+            detalles:   Lista de DetalleVentaDTO con los productos y precios.
+            db:         Sesión asíncrona de SQLAlchemy.
 
         Returns:
-            VentaResponse: DTO con datos de la venta (id, cliente, banco, estado, total, saldo_restante, fecha).
-
-        Raises:
-            HTTPException 404: Si algún producto no existe.
-            HTTPException 400: Si no hay suficiente stock para algún producto.
+            VentaResponse: DTO con datos de la venta.
         """
         async with db.begin():
             total_venta = 0.0
@@ -123,7 +131,6 @@ class VentaService:
                 saldo_restante=saldo_restante,
                 fecha=datetime.now()
             )
-
             venta = await self.venta_repository.create_venta(venta_dto, session=db)
 
             detalles_con_id = [
@@ -153,16 +160,28 @@ class VentaService:
                     nuevo_saldo = (banco.saldo or 0) + total_venta
                     await self.banco_repository.update_saldo(banco_id, nuevo_saldo, session=db)
 
+                    await self.transaccion_service.insertar_transaccion(
+                        TransaccionDTO(
+                            banco_id=banco_id,
+                            monto=total_venta,
+                            tipo_id=3,  
+                            descripcion=f"Pago venta {venta.id}"
+                        ),
+                        db=db
+                    )
+
+            # 8) Calcular y registrar utilidades
             detalle_utilidades = await self._calcular_detalle_utilidad(detalles_con_id, session=db)
             await self.detalle_utilidad_repository.bulk_insert_detalles(detalle_utilidades, session=db)
-
             utilidad_total = sum(d.total_utilidad for d in detalle_utilidades)
             utilidad_dto = UtilidadDTO(venta_id=venta.id, utilidad=utilidad_total)
             await self.utilidad_repository.create_utilidad(utilidad_dto, session=db)
 
+            # 9) Recargar nombres para la respuesta
             cliente = await self.cliente_repository.get_by_id(cliente_id, session=db)
-            banco    = await self.banco_repository.get_by_id(banco_id, session=db)
+            banco   = await self.banco_repository.get_by_id(banco_id, session=db)
 
+        # 10) Devolver DTO de salida
         return VentaResponse(
             id=venta.id,
             cliente=cliente.nombre if cliente else "Desconocido",
@@ -306,5 +325,5 @@ class VentaService:
             await self.detalle_utilidad_repository.delete_by_venta(venta_id, session=db)
             await self.utilidad_repository.delete_by_venta(venta_id, session=db)
             await self.detalle_repository.delete_by_venta(venta_id, session=db)
-
+            await self.transaccion_service.eliminar_transacciones_venta(venta_id, db=db)
             await self.venta_repository.delete_venta(venta_id, session=db)
