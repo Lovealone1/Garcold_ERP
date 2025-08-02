@@ -5,6 +5,8 @@ from app.v1_0.routers.pago_compra_router import router as pago_compra_router
 from app.v1_0.routers.gasto_router import router as gasto_router
 from app.v1_0.routers.credito_router import router as credito_router
 from app.v1_0.routers.inversion_router import router as inversion_router    
+from app.v1_0.routers.transaccion_router import router as transaccion_router
+from app.v1_0.routers.producto_router import router as producto_router
 
 defined_routers = [
     venta_router,
@@ -13,5 +15,7 @@ defined_routers = [
     pago_compra_router,
     gasto_router,
     credito_router,
-    inversion_router
+    inversion_router,
+    transaccion_router,
+    producto_router
 ]

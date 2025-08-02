@@ -107,7 +107,7 @@ class PagoVentaService:
                         banco_id=banco_id,
                         monto=monto,
                         tipo_id=3,
-                        descripcion=f"Abono compra {venta_id}"
+                        descripcion=f"{pago.id} Abono venta {venta_id}"
                     ),
                     db=db
                 )
@@ -210,7 +210,7 @@ class PagoVentaService:
             )
 
             await self.pago_venta_repo.delete_pago(pago_id, session=db)
-            await self.transaccion_service.eliminar_transacciones_abonos(pago_id, db=db)
+            await self.transaccion_service.eliminar_transacciones_pago_venta(pago_id,venta.id, db=db)
         return True
 
 

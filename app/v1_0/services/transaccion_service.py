@@ -1,6 +1,7 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime 
 
 from app.v1_0.entities import TransaccionDTO
 from app.v1_0.models import Transaccion
@@ -11,6 +12,7 @@ from app.v1_0.repositories import (
 )
 from app.v1_0.schemas.transaccion_schema import TransaccionResponseDTO
 
+PAGE_SIZE = 10
 
 class TransaccionService:
     """
@@ -29,7 +31,7 @@ class TransaccionService:
         self.trans_repo = transaccion_repository
         self.tipo_repo = tipo_transaccion_repository
         self.banco_repo = banco_repository
-
+    
     async def insertar_transaccion(
         self,
         transaccion_dto: TransaccionDTO,
@@ -115,16 +117,41 @@ class TransaccionService:
             fecha_creacion=trans.fecha_creacion
         )
     
-    async def eliminar_transacciones_abonos(
+    async def eliminar_transacciones_pago_compra(
             self,
             pago_id: int,
+            compra_id: int,
             db: AsyncSession
         ) -> int:
             """
-            Borra todas las transacciones automáticas de pagos de venta
+            Borra todas las transacciones automáticas de abonos de compra
+            (descripciones "<pago_id> Abono compra {compra_id}")
             y retorna cuántas se eliminaron.
             """
+            pago_id = await self.trans_repo.get_transaccion_id_for_pago_compra(pago_id ,compra_id, session=db)
+
+ 
             await self.trans_repo.delete_transaccion(pago_id, session=db)
+
+            return pago_id
+    
+    async def eliminar_transacciones_pago_venta(
+            self,
+            pago_id: int,
+            venta_id: int,
+            db: AsyncSession
+        ) -> int:
+            """
+            Borra todas las transacciones automáticas de abonos de venta
+            (descripciones "<pago_id> Abono venta {venta_id}")
+            y retorna cuántas se eliminaron.
+            """
+            pago_id = await self.trans_repo.get_transaccion_id_for_pago_venta(pago_id ,venta_id, session=db)
+
+ 
+            await self.trans_repo.delete_transaccion(pago_id, session=db)
+
+            return pago_id
     
     async def eliminar_transacciones_venta(
         self,
@@ -228,3 +255,89 @@ class TransaccionService:
 
         return True
 
+    async def listar_transacciones(
+        self,
+        page: int,
+        session: AsyncSession
+    ) -> List[TransaccionResponseDTO]:
+        """
+        Lista todas las transacciones, 10 por página.
+        """
+        offset = (page - 1) * PAGE_SIZE
+        transs = await self.trans_repo.list_paginated(offset, PAGE_SIZE, session)
+        return await self._to_dtos(transs, session)
+
+    async def listar_por_banco(
+        self,
+        banco_id: int,
+        page: int,
+        session: AsyncSession
+    ) -> List[TransaccionResponseDTO]:
+        """
+        Lista transacciones de un banco, 10 por página.
+        """
+        offset = (page - 1) * PAGE_SIZE
+        transs = await self.trans_repo.list_by_banco_paginated(
+            banco_id, offset, PAGE_SIZE, session
+        )
+        return await self._to_dtos(transs, session)
+
+    async def listar_por_tipo(
+        self,
+        tipo_id: int,
+        page: int,
+        session: AsyncSession
+    ) -> List[TransaccionResponseDTO]:
+        """
+        Lista transacciones de un tipo, 10 por página.
+        """
+        offset = (page - 1) * PAGE_SIZE
+        transs = await self.trans_repo.list_by_tipo_paginated(
+            tipo_id, offset, PAGE_SIZE, session
+        )
+        return await self._to_dtos(transs, session)
+
+    async def listar_por_rango(
+        self,
+        fecha_inicio: datetime,
+        fecha_fin: datetime,
+        page: int,
+        session: AsyncSession
+    ) -> List[TransaccionResponseDTO]:
+        """
+        Lista transacciones entre dos fechas, 10 por página.
+        """
+        if fecha_fin < fecha_inicio:
+            raise HTTPException(400, "fecha_fin debe ser >= fecha_inicio")
+
+        offset = (page - 1) * PAGE_SIZE
+        transs = await self.trans_repo.list_by_rango_paginated(
+            fecha_inicio, fecha_fin, offset, PAGE_SIZE, session
+        )
+        return await self._to_dtos(transs, session)
+
+    # ——— helper para convertir a DTO ———
+
+    async def _to_dtos(
+        self,
+        transacciones: List[Transaccion],
+        session: AsyncSession
+    ) -> List[TransaccionResponseDTO]:
+        """
+        Convierte entidades en DTOs incluyendo nombres de banco y tipo.
+        """
+        dtos: List[TransaccionResponseDTO] = []
+        for t in transacciones:
+            banco = await self.banco_repo.get_by_id(t.banco_id, session=session)
+            tipo  = await self.tipo_repo.get_by_id(t.tipo_id, session=session)
+            dtos.append(
+                TransaccionResponseDTO(
+                    id=t.id,
+                    banco=banco.nombre if banco else "Desconocido",
+                    tipo=tipo.nombre   if tipo  else "Desconocido",
+                    monto=t.monto,
+                    descripcion=t.descripcion,
+                    fecha_creacion=t.fecha_creacion
+                )
+            )
+        return dtos

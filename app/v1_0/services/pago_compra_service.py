@@ -218,5 +218,5 @@ class PagoCompraService:
             )
 
             await self.pago_compra_repo.delete_pago(pago_id, session=db)
-            await self.transaccion_service.eliminar_transacciones_pago_compra(pago_id, db=db)
+            await self.transaccion_service.eliminar_transacciones_pago_compra(pago_id,compra.id, db=db)
         return True

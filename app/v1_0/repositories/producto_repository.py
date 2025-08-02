@@ -18,9 +18,14 @@ class ProductoRepository(BaseRepository[Producto]):
         session: AsyncSession
     ) -> Producto:
         """
-        Crea un nuevo Producto a partir del DTO y hace flush para asignar su ID.
+        Crea un nuevo Producto usando todos los campos del DTO,
+        incluidos activo y fecha_creacion.
         """
-        producto = Producto(**dto.model_dump())
+        payload = dto.model_dump()
+
+
+        producto = Producto(**payload)
+
         await self.add(producto, session)
         return producto
 
@@ -141,3 +146,20 @@ class ProductoRepository(BaseRepository[Producto]):
         producto.cantidad -= cantidad
         await self.update(producto, session)
         return producto
+
+    async def list_paginated(
+            self,
+            offset: int,
+            limit: int,
+            session: AsyncSession
+        ) -> List[Producto]:
+            """
+            Recupera todos los Productos paginados.
+            """
+            stmt = (
+                select(Producto)
+                .offset(offset)
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return result.scalars().all()

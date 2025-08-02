@@ -1,12 +1,14 @@
-import re
-from typing import List
-from sqlalchemy import select, desc
+from typing import List, Optional
+from sqlalchemy import select, desc, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from app.v1_0.models import Transaccion
 from app.v1_0.entities import TransaccionDTO
+from app.v1_0.schemas.transaccion_schema import TransaccionResponseDTO
 from .base_repository import BaseRepository
 
+PAGE_SIZE = 10
 
 class TransaccionRepository(BaseRepository[Transaccion]):
     """
@@ -114,18 +116,26 @@ class TransaccionRepository(BaseRepository[Transaccion]):
         return True
 
     async def get_ids_for_pago_compra(
-            self,
-            compra_id: int,
-            session: AsyncSession
-        ) -> List[int]:
-            """
-            Busca todas las transacciones cuya descripción contenga 'pago compra {compra_id}'
-            y devuelve sus IDs.
-            """
-            pattern = f"%pago compra {compra_id}%"
-            stmt = select(Transaccion.id).where(Transaccion.descripcion.ilike(pattern))
-            result = await session.execute(stmt)
-            return result.scalars().all()
+        self,
+        compra_id: int,
+        session: AsyncSession
+    ) -> List[int]:
+        """
+        Busca todas las transacciones automáticas de pagos de compra (tanto
+        'pago compra {compra_id}' como 'abono compra {compra_id}') y devuelve sus IDs.
+        """
+        # Construimos los dos patrones a buscar
+        p1 = f"%pago compra {compra_id}%"
+        p2 = f"%abono compra {compra_id}%"
+
+        stmt = select(Transaccion.id).where(
+            or_(
+                Transaccion.descripcion.ilike(p1),
+                Transaccion.descripcion.ilike(p2)
+            )
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
 
     async def get_ids_for_pago_venta(
         self,
@@ -162,34 +172,116 @@ class TransaccionRepository(BaseRepository[Transaccion]):
         result = await session.execute(stmt)
         return result.scalars().all()
     
-    async def get_pago_ids_for_venta(
+    async def get_transaccion_id_for_pago_compra(
         self,
-        venta_id: int,
+        pago_id: int,
+        compra_id: int,
         session: AsyncSession
-    ) -> List[int]:
+    ) -> Optional[int]:
         """
-        Busca todas las transacciones cuya descripción contenga
-        'Abono {pago_id} venta {venta_id}', extrae y devuelve los pago_id.
+        Busca la transacción automática correspondiente a un abono de compra
+        con descripción "<pago_id> Abono compra {compra_id}" y devuelve su ID.
 
         Args:
-            venta_id (int): ID de la venta asociada.
-            session (AsyncSession): Sesión asíncrona de SQLAlchemy.
+            pago_id (int):   ID del DetallePagoCompra.
+            compra_id (int): ID de la compra asociada.
+            session:        Sesión asíncrona de SQLAlchemy.
 
         Returns:
-            List[int]: Lista de IDs de DetallePagoVenta (pago_id).
+            Optional[int]: ID de la transacción si existe, o None.
         """
-        pattern = f"%Abono % venta {venta_id}%"
-        stmt = select(Transaccion.descripcion).where(
+        pattern = f"{pago_id} Abono compra {compra_id}%"
+        stmt = select(Transaccion.id).where(
             Transaccion.descripcion.ilike(pattern)
         )
         result = await session.execute(stmt)
-        descs = result.scalars().all()
+        return result.scalar_one_or_none()
+    
+    async def get_transaccion_id_for_pago_venta(
+        self,
+        pago_id: int,
+        venta_id: int,
+        session: AsyncSession
+    ) -> Optional[int]:
+        """
+        Busca la transacción automática correspondiente a un abono de venta
+        con descripción "<pago_id> Abono venta {venta_id}" y devuelve su ID.
 
-        pago_ids: List[int] = []
-        regex = re.compile(r"Abono (\d+) venta " + re.escape(str(venta_id)), re.IGNORECASE)
-        for desc in descs:
-            match = regex.search(desc)
-            if match:
-                pago_ids.append(int(match.group(1)))
+        Args:
+            pago_id (int):   ID del DetallePagoVenta.
+            venta_id (int):  ID de la venta asociada.
+            session:        Sesión asíncrona de SQLAlchemy.
 
-        return pago_ids
+        Returns:
+            Optional[int]: ID de la transacción si existe, o None.
+        """
+        pattern = f"{pago_id} Abono venta {venta_id}%"  
+        stmt = select(Transaccion.id).where(
+            Transaccion.descripcion.ilike(pattern)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    async def list_paginated(
+        self,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> List[Transaccion]:
+        stmt = select(Transaccion).offset(offset).limit(limit)
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def list_by_banco_paginated(
+        self,
+        banco_id: int,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> List[Transaccion]:
+        stmt = (
+            select(Transaccion)
+            .where(Transaccion.banco_id == banco_id)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def list_by_tipo_paginated(
+        self,
+        tipo_id: int,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> List[Transaccion]:
+        stmt = (
+            select(Transaccion)
+            .where(Transaccion.tipo_id == tipo_id)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def list_by_rango_paginated(
+        self,
+        fecha_inicio: datetime,
+        fecha_fin: datetime,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> List[Transaccion]:
+        stmt = (
+            select(Transaccion)
+            .where(
+                and_(
+                    Transaccion.fecha_creacion >= fecha_inicio,
+                    Transaccion.fecha_creacion <= fecha_fin
+                )
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()

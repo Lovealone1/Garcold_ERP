@@ -29,7 +29,7 @@ from app.v1_0.services.gasto_service import GastoService
 from app.v1_0.services.credito_service import CreditoService
 from app.v1_0.services.inversion_service import InversionService
 from app.v1_0.services.transaccion_service import TransaccionService
-
+from app.v1_0.services.producto_service import ProductoService
 class APIContainer(containers.DeclarativeContainer):
     """
     Contenedor para repositorios y servicios de la API de ventas.
@@ -54,7 +54,13 @@ class APIContainer(containers.DeclarativeContainer):
     inversion_repository = providers.Singleton(InversionRepository)
     tipo_transaccion_repository = providers.Singleton(TipoTransaccionRepository)
     transaccion_repository = providers.Singleton(TransaccionRepository)
+
     # Servicios
+    producto_service = providers.Singleton(
+        ProductoService,
+        producto_repository=producto_repository
+    )
+
     credito_service = providers.Singleton(
         CreditoService,
         credito_repository=credito_repository
