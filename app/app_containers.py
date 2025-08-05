@@ -18,7 +18,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
             "app.v1_0.routers.credito_router",
             "app.v1_0.routers.inversion_router",
             "app.v1_0.routers.transaccion_router",
-            "app.v1_0.routers.producto_router"
+            "app.v1_0.routers.producto_router",
+            "app.v1_0.routers.cliente_router",
+            "app.v1_0.routers.proveedor_router",
+            "app.v1_0.routers.utilidad_router",
+            "app.v1_0.routers.auth_router"
             ]
     )
 

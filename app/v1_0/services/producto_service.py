@@ -98,8 +98,6 @@ class ProductoService:
         page: int,
         session: AsyncSession
     ) -> List[ProductoListDTO]:
-        if page < 1:
-            raise HTTPException(status_code=400, detail="page debe ser >= 1")
 
         offset = (page - 1) * PAGE_SIZE
         productos = await self.repository.list_paginated(offset, PAGE_SIZE, session=session)

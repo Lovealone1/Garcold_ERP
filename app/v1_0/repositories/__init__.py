@@ -18,6 +18,7 @@ from .credito_repository import CreditoRepository
 from .inversion_repository import InversionRepository
 from .tipo_transaccion_repository import TipoTransaccionRepository
 from .transaccion_repository import TransaccionRepository
+from .user_repository import UserRepository
 __all__ = [
     "BaseRepository",
     "ClienteRepository",
@@ -38,5 +39,6 @@ __all__ = [
     "CreditoRepository",
     "InversionRepository",
     "TipoTransaccionRepository",
-    "TransaccionRepository"
+    "TransaccionRepository",
+    "UserRepository"
 ]

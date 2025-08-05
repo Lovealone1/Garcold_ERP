@@ -15,6 +15,7 @@ from .proveedorDTO import ProveedorDTO
 from .transaccionDTO import TransaccionDTO
 from .utilidadDTO import UtilidadDTO
 from .ventaDTO import VentaDTO
+from .userDTO import UserDTO
 
 __all__ = [
     "BancoDTO",
@@ -34,4 +35,5 @@ __all__ = [
     "TransaccionDTO",
     "UtilidadDTO",
     "VentaDTO",
+    "UserDTO"
 ]

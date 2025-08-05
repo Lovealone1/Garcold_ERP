@@ -98,3 +98,20 @@ class ClienteRepository(BaseRepository[Cliente]):
 
         await self.delete(cliente, session)
         return True
+
+    async def list_paginated(
+        self,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> List[Cliente]:
+        """
+        Recupera todos los Clientes paginados.
+        """
+        stmt = (
+            select(Cliente)
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()

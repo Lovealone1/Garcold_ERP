@@ -81,3 +81,20 @@ class ProveedorRepository(BaseRepository[Proveedor]):
 
         await self.delete(proveedor, session)
         return True
+
+    async def list_paginated(
+            self,
+            offset: int,
+            limit: int,
+            session: AsyncSession
+        ) -> List[Proveedor]:
+            """
+            Recupera todos los Proveedores paginados.
+            """
+            stmt = (
+                select(Proveedor)
+                .offset(offset)
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return result.scalars().all()

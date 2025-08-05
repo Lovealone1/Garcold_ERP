@@ -19,7 +19,8 @@ from app.v1_0.repositories import (
     CreditoRepository, 
     InversionRepository, 
     TipoTransaccionRepository,
-    TransaccionRepository
+    TransaccionRepository, 
+    UserRepository
 )
 from app.v1_0.services.venta_service import VentaService
 from app.v1_0.services.compra_service import CompraService
@@ -30,6 +31,11 @@ from app.v1_0.services.credito_service import CreditoService
 from app.v1_0.services.inversion_service import InversionService
 from app.v1_0.services.transaccion_service import TransaccionService
 from app.v1_0.services.producto_service import ProductoService
+from app.v1_0.services.cliente_service import ClienteService
+from app.v1_0.services.proveedor_service import ProveedorService
+from app.v1_0.services.utilidad_service import UtilidadService
+from app.v1_0.services.user_service import UserService
+
 class APIContainer(containers.DeclarativeContainer):
     """
     Contenedor para repositorios y servicios de la API de ventas.
@@ -54,8 +60,28 @@ class APIContainer(containers.DeclarativeContainer):
     inversion_repository = providers.Singleton(InversionRepository)
     tipo_transaccion_repository = providers.Singleton(TipoTransaccionRepository)
     transaccion_repository = providers.Singleton(TransaccionRepository)
-
+    user_repository = providers.Singleton(UserRepository)
     # Servicios
+    user_service = providers.Singleton(
+        UserService,
+        user_repository = user_repository
+    )
+
+    utilidad_service = providers.Singleton(
+        UtilidadService,
+        utilidad_repository = utilidad_repository
+    )
+
+    proveedor_service = providers.Singleton(
+        ProveedorService, 
+        proveedor_repository = proveedor_repository
+    )
+
+    cliente_service = providers.Singleton(
+        ClienteService,
+        cliente_repository=cliente_repository
+    )
+    
     producto_service = providers.Singleton(
         ProductoService,
         producto_repository=producto_repository

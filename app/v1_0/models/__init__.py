@@ -17,7 +17,15 @@ from .tipo_transaccion import TipoTransaccion
 from .categoria_gastos import CategoriaGastos
 from .detalle_pago_venta import DetallePagoVenta
 from .detalle_pago_compra import DetallePagoCompra
+from .user import User
 __all__ = [
-    "Cliente", "Producto", "Venta", "DetalleVenta", "Compra", "DetalleCompra",
-    "Proveedor", "Transaccion", "Gasto", "Utilidad", "DetalleUtilidad", "Inversion", "Credito", "Banco", "Estado", "TipoTransaccion", "CategoriaGastos", "DetallePagoVenta", "DetallePagoCompra"
+    "Cliente", 
+    "Producto", 
+    "Venta", 
+    "DetalleVenta", 
+    "Compra", "DetalleCompra",
+    "Proveedor", 
+    "Transaccion", "Gasto", "Utilidad", 
+    "DetalleUtilidad", "Inversion", "Credito", 
+    "Banco", "Estado", "TipoTransaccion", "CategoriaGastos", "DetallePagoVenta", "DetallePagoCompra", "User"
 ]
