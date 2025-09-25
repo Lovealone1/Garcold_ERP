@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
@@ -10,6 +10,7 @@ class Transaccion(Base):
     banco_id = Column(Integer, ForeignKey("banco.id"), nullable=False)
     monto = Column(Float, nullable=False)
     tipo_id = Column(Integer, ForeignKey("tipo_transacciones.id"), nullable=False)
+    descripcion   = Column(Text, nullable=True)
     fecha_creacion = Column(DateTime, default=datetime.now)
 
     banco = relationship("Banco")

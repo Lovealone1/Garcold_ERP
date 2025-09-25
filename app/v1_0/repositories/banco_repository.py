@@ -1,12 +1,12 @@
 # app/v1_0/repositories/banco_repository.py
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Banco
-from app.v1_0.entities import BancoDTO
+from app.v1_0.schemas.banco_schema import BancoCreateSchema
 from .base_repository import BaseRepository
 
 class BancoRepository(BaseRepository[Banco]):
@@ -15,7 +15,7 @@ class BancoRepository(BaseRepository[Banco]):
 
     async def create_banco(
         self,
-        dto: BancoDTO,
+        dto: BancoCreateSchema,
         session: AsyncSession
     ) -> Banco:
         """
@@ -24,18 +24,6 @@ class BancoRepository(BaseRepository[Banco]):
         banco = Banco(**dto.model_dump())
         await self.add(banco, session)
         return banco
-
-    async def get_by_nombre(
-        self,
-        nombre: str,
-        session: AsyncSession
-    ) -> Optional[Banco]:
-        """
-        Obtiene un Banco por su nombre, o None si no existe.
-        """
-        stmt = select(Banco).where(Banco.nombre == nombre)
-        result = await session.execute(stmt)
-        return result.scalar_one_or_none()
 
     async def update_saldo(
         self,
@@ -54,6 +42,33 @@ class BancoRepository(BaseRepository[Banco]):
         banco.fecha_actualizacion = datetime.now()
         await self.update(banco, session)
         return banco
+
+    async def delete_banco(
+        self,
+        banco_id: int,
+        session: AsyncSession
+    ) -> bool:
+        """
+        Elimina un Banco dado su ID.
+
+        Parameters
+        ----------
+        banco_id : int
+            ID del banco a eliminar.
+        session : AsyncSession
+            Sesión async de SQLAlchemy.
+
+        Returns
+        -------
+        bool
+            True si el banco existía y fue eliminado, False si no existe.
+        """
+        banco = await self.get_by_id(banco_id, session)
+        if not banco:
+            return False
+
+        await self.delete(banco, session)
+        return True
 
     async def aumentar_saldo(
         self,
@@ -90,3 +105,23 @@ class BancoRepository(BaseRepository[Banco]):
         banco.fecha_actualizacion = datetime.now()
         await self.update(banco, session)
         return banco
+
+    async def list_bancos(
+            self,
+            session: AsyncSession
+        ) -> List[Banco]:
+            """
+            Retorna todos los Bancos con todos sus campos.
+
+            Parameters
+            ----------
+            session : AsyncSession
+                Sesión async de SQLAlchemy.
+
+            Returns
+            -------
+            List[Banco]
+                Lista de instancias de modelo Banco.
+            """
+            result = await session.execute(select(Banco))
+            return list(result.scalars().all())

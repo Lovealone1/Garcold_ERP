@@ -5,14 +5,14 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import DetallePagoCompraDTO
-from app.v1_0.schemas.pago_venta_schema import PagoResponseDTO
+from app.v1_0.entities import DetallePagoCompraDTO, TransaccionDTO, PagoResponseDTO
 from app.v1_0.repositories import (
     CompraRepository,
     EstadoRepository,
     DetallePagoCompraRepository,
     BancoRepository,
 )
+from app.v1_0.services.transaccion_service import TransaccionService
 
 class PagoCompraService:
     """
@@ -23,12 +23,14 @@ class PagoCompraService:
         compra_repository: CompraRepository,
         estado_repository: EstadoRepository,
         pago_compra_repository: DetallePagoCompraRepository,
-        banco_repository: BancoRepository
+        banco_repository: BancoRepository,
+        transaccion_service: TransaccionService
     ):
         self.compra_repo = compra_repository
         self.estado_repo = estado_repository
         self.pago_compra_repo = pago_compra_repository
         self.banco_repo = banco_repository
+        self.transaccion_service = transaccion_service
 
     async def crear_pago_compra(
         self,
@@ -105,6 +107,15 @@ class PagoCompraService:
 
             await self.banco_repo.disminuir_saldo(
                 banco_id, monto, session=db
+            )
+            await self.transaccion_service.insertar_transaccion(
+                TransaccionDTO(
+                    banco_id=banco_id,
+                    monto=monto,
+                    tipo_id=3,
+                    descripcion=f"{pago.id} Abono compra {compra_id}"
+                ),
+                db=db
             )
 
         return PagoResponseDTO(
@@ -206,5 +217,5 @@ class PagoCompraService:
             )
 
             await self.pago_compra_repo.delete_pago(pago_id, session=db)
-
+            await self.transaccion_service.eliminar_transacciones_pago_compra(pago_id,compra.id, db=db)
         return True

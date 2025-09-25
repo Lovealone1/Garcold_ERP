@@ -7,7 +7,8 @@ from dependency_injector.wiring import inject, Provide
 
 from app.utils.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
-from app.v1_0.schemas.pago_venta_schema import PagoRequestDTO, PagoResponseDTO
+from app.v1_0.schemas.pago_venta_schema import PagoRequestDTO
+from app.v1_0.entities import PagoResponseDTO
 
 router = APIRouter(
     prefix="/pagos",

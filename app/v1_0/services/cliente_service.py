@@ -1,105 +1,127 @@
+from typing import Optional, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from math import ceil
+
 from app.v1_0.repositories.cliente_repository import ClienteRepository
-from app.v1_0.entities import ClienteDTO
+from app.v1_0.entities import ClienteDTO, ClientesPageDTO, ClienteListDTO, ListClienteDTO
 from app.v1_0.models import Cliente
 
+PAGE_SIZE = 10
 
 class ClienteService:
     def __init__(self, cliente_repository: ClienteRepository):
-        """
-        Servicio para manejar operaciones de negocio relacionadas con clientes.
-
-        Args:
-            cliente_repository (ClienteRepository): Repositorio de acceso a datos para Cliente.
-        """
         self.cliente_repository = cliente_repository
 
-    async def crear_cliente(self, cliente_dto: ClienteDTO) -> Cliente:
+    async def crear_cliente(
+    self,
+    cliente_dto: ClienteDTO,
+    db: AsyncSession
+    ) -> Cliente:
         """
-        Crea un nuevo cliente en el sistema.
-
-        - Verifica que no exista un cliente con el mismo número de identificación (cc_nit).
-        - Valida que el celular contenga solo dígitos (si es proporcionado).
-        - Asigna un saldo de 0.0 por defecto si no se especifica.
-
-        Args:
-            cliente_dto (ClienteDTO): Datos del cliente a crear.
-
-        Returns:
-            Cliente: Cliente creado.
-
-        Raises:
-            ValueError: Si el NIT ya existe o si el celular tiene caracteres inválidos.
+        Crea cliente. Validaciones básicas; la unicidad por cc_nit
+        debe estar en la capa de DB si aplica.
         """
-        existente = await self.cliente_repository.get_by_cc_nit(cliente_dto.cc_nit)
-        if existente:
-            raise ValueError(f"Ya existe un cliente con NIT {cliente_dto.cc_nit}")
-
         if cliente_dto.celular and not cliente_dto.celular.isdigit():
             raise ValueError("El número de celular debe contener solo dígitos")
 
+        # Normalizar valores
         cliente_dto.saldo = cliente_dto.saldo or 0.0
+        if cliente_dto.ciudad:
+            cliente_dto.ciudad = cliente_dto.ciudad.upper().strip()
 
-        return await self.cliente_repository.create_cliente(cliente_dto)
+        async with db.begin():
+            return await self.cliente_repository.create_cliente(cliente_dto, session=db)
 
-    async def actualizar_cliente(self, cliente_id: int, cliente_dto: ClienteDTO) -> Cliente:
+    async def obtener_por_id(
+        self,
+        cliente_id: int,
+        db: AsyncSession
+    ) -> Optional[Cliente]:
+        """Retorna el cliente por ID o None."""
+        async with db.begin():
+            return await self.cliente_repository.get_by_id(cliente_id, session=db)
+
+    async def actualizar_cliente(
+        self,
+        cliente_id: int,
+        cliente_dto: ClienteDTO,
+        db: AsyncSession
+    ) -> Cliente:
+        """Actualiza datos del cliente."""
+        async with db.begin():
+            cliente = await self.cliente_repository.get_by_id(cliente_id, session=db)
+            if not cliente:
+                raise ValueError("Cliente no encontrado")
+            return await self.cliente_repository.update_cliente(cliente_id, cliente_dto, session=db)
+
+    async def actualizar_saldo(
+        self,
+        cliente_id: int,
+        nuevo_saldo: float,
+        db: AsyncSession
+    ) -> Cliente:
+        """Actualiza sólo el saldo del cliente."""
+        async with db.begin():
+            cliente = await self.cliente_repository.update_saldo(cliente_id, nuevo_saldo, session=db)
+            if not cliente:
+                raise ValueError("Cliente no encontrado")
+            return cliente
+
+    async def eliminar_cliente(
+        self,
+        cliente_id: int,
+        db: AsyncSession
+    ) -> bool:
+        """Elimina cliente por ID."""
+        async with db.begin():
+            cliente = await self.cliente_repository.get_by_id(cliente_id, session=db)
+            if not cliente:
+                raise ValueError("Cliente no encontrado")
+            return await self.cliente_repository.delete_cliente(cliente_id, session=db)
+
+    async def listar_clientes(self, page: int, db: AsyncSession) -> ClientesPageDTO:
+        """Lista clientes paginados con metadatos."""
+        offset = (page - 1) * PAGE_SIZE
+        async with db.begin():
+            items, total = await self.cliente_repository.list_paginated(
+                offset=offset, limit=PAGE_SIZE, session=db
+            )
+
+        total = int(total or 0)
+        total_pages = max(1, ceil(total / PAGE_SIZE)) if total else 1
+
+        return ClientesPageDTO(
+            items=[
+                ClienteListDTO(
+                    id=c.id,
+                    nombre=c.nombre,
+                    cc_nit=c.cc_nit,
+                    correo=c.correo,
+                    direccion=c.direccion,
+                    celular=c.celular,
+                    ciudad=c.ciudad,
+                    saldo=c.saldo,
+                    fecha_creacion=c.fecha_creacion
+                )
+                for c in items
+            ],
+            page=page,
+            page_size=PAGE_SIZE,
+            total=total,
+            total_pages=total_pages,
+            has_next=page < total_pages,
+            has_prev=page > 1,
+        )
+
+    async def listar_clientes_all(
+        self,
+        db: AsyncSession,
+    ) -> List[ListClienteDTO]:
         """
-        Actualiza los datos de un cliente existente.
-
-        Args:
-            cliente_id (int): ID del cliente a actualizar.
-            cliente_dto (ClienteDTO): Nuevos datos del cliente.
-
-        Returns:
-            Cliente: Cliente actualizado.
-
-        Raises:
-            ValueError: Si el cliente no existe.
+        Lista TODOS los clientes (sin paginación) devolviendo ClienteListDTO
+        con solo id y nombre (resto de campos quedan por defecto).
         """
-        cliente = await self.cliente_repository.get_by_id(cliente_id)
-        if not cliente:
-            raise ValueError("Cliente no encontrado")
+        async with db.begin():
+            rows = await self.cliente_repository.list_clientes(session=db)
 
-        return await self.cliente_repository.update_cliente(cliente_id, cliente_dto)
-
-    async def eliminar_cliente(self, cliente_id: int) -> bool:
-        """
-        Elimina un cliente por su ID.
-
-        Args:
-            cliente_id (int): ID del cliente a eliminar.
-
-        Returns:
-            bool: True si fue eliminado, False si no se encontró.
-
-        Raises:
-            ValueError: Si el cliente no existe.
-        """
-        cliente = await self.cliente_repository.get_by_id(cliente_id)
-        if not cliente:
-            raise ValueError("Cliente no encontrado")
-
-        return await self.cliente_repository.delete_cliente(cliente_id)
-
-    async def obtener_por_cc_nit(self, cc_nit: str) -> Cliente | None:
-        """
-        Obtiene un cliente por su número de identificación (cc_nit).
-
-        Args:
-            cc_nit (str): Número de cédula o NIT del cliente.
-
-        Returns:
-            Cliente | None: Cliente encontrado o None si no existe.
-        """
-        return await self.cliente_repository.get_by_cc_nit(cc_nit)
-
-    async def obtener_por_nombre(self, nombre: str) -> list[Cliente]:
-        """
-        Busca clientes cuyo nombre coincida parcialmente con el valor dado.
-
-        Args:
-            nombre (str): Nombre o fragmento del nombre a buscar.
-
-        Returns:
-            list[Cliente]: Lista de clientes que coinciden con el nombre.
-        """
-        return await self.cliente_repository.get_by_nombre(nombre)
+        return [ListClienteDTO(id=cid, nombre=nombre) for cid, nombre in rows]

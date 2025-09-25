@@ -1,7 +1,5 @@
-# app/v1_0/repositories/utilidad_repository.py
-
-from typing import Optional
-from sqlalchemy import select, delete
+from typing import Optional, List, Tuple
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Utilidad
@@ -49,3 +47,35 @@ class UtilidadRepository(BaseRepository[Utilidad]):
         result = await session.execute(stmt)
         await session.flush()
         return result.rowcount
+
+    async def list_paginated(
+        self,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> Tuple[List[Utilidad], int]:
+        """
+        Lista de Utilidades paginada con total.
+        Retorna items y total de registros.
+        """
+        stmt = (
+            select(Utilidad)
+            .order_by(Utilidad.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = (await session.execute(stmt)).scalars().all()
+        total = await session.scalar(select(func.count(Utilidad.id)))
+        return items, int(total or 0)
+
+    async def get_utilidad_by_venta_id(
+        self,
+        venta_id: int,
+        session: AsyncSession
+    ) -> Optional[Utilidad]:
+        """
+        Recupera la utilidad específica por venta_id.
+        """
+        stmt = select(Utilidad).where(Utilidad.venta_id == venta_id)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
