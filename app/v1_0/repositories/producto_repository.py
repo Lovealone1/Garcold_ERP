@@ -1,5 +1,3 @@
-# app/v1_0/repositories/producto_repository.py
-
 from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,30 +36,6 @@ class ProductoRepository(BaseRepository[Producto]):
         Recupera un Producto por su ID.
         """
         return await super().get_by_id(producto_id, session)
-
-    async def get_by_referencia(
-        self,
-        referencia: str,
-        session: AsyncSession
-    ) -> Optional[Producto]:
-        """
-        Recupera un Producto por su referencia exacta.
-        """
-        stmt = select(Producto).where(Producto.referencia == referencia)
-        result = await session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def get_by_descripcion(
-        self,
-        descripcion: str,
-        session: AsyncSession
-    ) -> List[Producto]:
-        """
-        Busca Productos cuya descripción contenga la cadena (case‑insensitive).
-        """
-        stmt = select(Producto).where(Producto.descripcion.ilike(f"%{descripcion}%"))
-        result = await session.execute(stmt)
-        return result.scalars().all()
 
     async def update_producto(
         self,
@@ -148,18 +122,27 @@ class ProductoRepository(BaseRepository[Producto]):
         return producto
 
     async def list_paginated(
-            self,
-            offset: int,
-            limit: int,
-            session: AsyncSession
-        ) -> List[Producto]:
-            """
-            Recupera todos los Productos paginados.
-            """
-            stmt = (
-                select(Producto)
-                .offset(offset)
-                .limit(limit)
-            )
-            result = await session.execute(stmt)
-            return result.scalars().all()
+    self,
+    offset: int,
+    limit: int,
+    session: AsyncSession
+    ) -> List[Producto]:
+        stmt = (
+            select(Producto)
+            .order_by(Producto.id.asc())   # <= orden estable
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
+    
+    async def list_productos(
+    self,
+    session: AsyncSession
+    ) -> List[Producto]:
+        """
+        Lista TODOS los productos (sin paginación), ordenados por id asc.
+        """
+        stmt = select(Producto).order_by(Producto.id.asc())
+        result = await session.execute(stmt)
+        return result.scalars().all()

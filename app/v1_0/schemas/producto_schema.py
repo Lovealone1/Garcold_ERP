@@ -1,18 +1,4 @@
 from pydantic import BaseModel, Field
-from datetime import datetime
-
-class ProductoListDTO(BaseModel):
-    """
-    DTO para el listado completo de productos, con todos sus campos.
-    """
-    id: int
-    referencia: str
-    descripcion: str
-    cantidad: int
-    precio_compra: float
-    precio_venta: float
-    activo: bool
-    fecha_creacion: datetime
 
 class ProductoRequestDTO(BaseModel):
     """

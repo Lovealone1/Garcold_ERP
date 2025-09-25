@@ -3,8 +3,7 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import DetallePagoVentaDTO, TransaccionDTO
-from app.v1_0.schemas.pago_venta_schema import PagoResponseDTO  
+from app.v1_0.entities import DetallePagoVentaDTO, TransaccionDTO, PagoResponseDTO
 from app.v1_0.repositories import (
     VentaRepository,
     EstadoRepository,
@@ -31,6 +30,7 @@ class PagoVentaService:
         self.pago_venta_repo = pago_venta_repository
         self.banco_repo = banco_repository
         self.transaccion_service = transaccion_service
+
     async def crear_pago_venta(
             self,
             venta_id: int,

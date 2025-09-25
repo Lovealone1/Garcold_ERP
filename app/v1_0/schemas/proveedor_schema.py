@@ -1,19 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
-from datetime import datetime
 from typing import Optional
-
-class ProveedorListDTO(BaseModel):
-    """
-    DTO para el listado completo de proveedores.
-    """
-    id: int
-    cc_nit: str
-    nombre: str
-    direccion: str
-    ciudad: str
-    celular: Optional[str] = None
-    correo: Optional[str] = None
-    fecha_creacion: datetime
 
 class ProveedorRequestDTO(BaseModel):
     """

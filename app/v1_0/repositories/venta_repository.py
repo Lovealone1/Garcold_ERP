@@ -1,4 +1,5 @@
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any, Tuple
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Venta
@@ -59,22 +60,19 @@ class VentaRepository(BaseRepository[Venta]):
         Returns:
             La entidad Venta actualizada, o None si no existe.
         """
-        # Obtener la entidad desde la sesión activa
+
         venta = await session.get(Venta, venta_id)
         if not venta:
             return None
 
-        # Normalizar origen de datos
         if isinstance(data, dict):
             updates = data
         else:
             updates = data.model_dump(exclude_unset=True)
 
-        # Aplicar cambios
         for field, value in updates.items():
             setattr(venta, field, value)
 
-        # Flush y refresh en lugar de commit
         await session.flush()
         await session.refresh(venta)
         return venta
@@ -93,3 +91,23 @@ class VentaRepository(BaseRepository[Venta]):
 
         await self.delete(venta, session)
         return True
+
+    async def list_paginated(
+        self,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> Tuple[List[Venta], int]:
+        """
+        Lista ventas paginadas, ordenadas por ID ascendente.
+        Retorna (items, total).
+        """
+        stmt = (
+            select(Venta)
+            .order_by(Venta.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = (await session.execute(stmt)).scalars().all()
+        total = await session.scalar(select(func.count(Venta.id)))
+        return items, int(total or 0)

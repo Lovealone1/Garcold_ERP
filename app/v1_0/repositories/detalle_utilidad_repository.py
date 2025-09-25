@@ -28,9 +28,6 @@ class DetalleUtilidadRepository(BaseRepository[DetalleUtilidad]):
         venta_id: int,
         session: AsyncSession
     ) -> List[DetalleUtilidad]:
-        """
-        Recupera todos los DetalleUtilidad asociados a una venta.
-        """
         stmt = select(DetalleUtilidad).where(DetalleUtilidad.venta_id == venta_id)
         result = await session.execute(stmt)
         return result.scalars().all()

@@ -1,9 +1,6 @@
-# app/v1_0/repositories/utilidad_repository.py
-
-from typing import Optional, List
-from sqlalchemy import select, delete, and_
+from typing import Optional, List, Tuple
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 
 from app.v1_0.models import Utilidad
 from app.v1_0.entities import UtilidadDTO
@@ -56,39 +53,29 @@ class UtilidadRepository(BaseRepository[Utilidad]):
         offset: int,
         limit: int,
         session: AsyncSession
-    ) -> List[Utilidad]:
+    ) -> Tuple[List[Utilidad], int]:
         """
-        Recupera todas las Utilidades paginadas.
+        Lista de Utilidades paginada con total.
+        Retorna items y total de registros.
         """
         stmt = (
             select(Utilidad)
+            .order_by(Utilidad.id.asc())
             .offset(offset)
             .limit(limit)
         )
-        result = await session.execute(stmt)
-        return result.scalars().all()
+        items = (await session.execute(stmt)).scalars().all()
+        total = await session.scalar(select(func.count(Utilidad.id)))
+        return items, int(total or 0)
 
-    async def list_by_rango_paginated(
+    async def get_utilidad_by_venta_id(
         self,
-        fecha_inicio: datetime,
-        fecha_fin: datetime,
-        offset: int,
-        limit: int,
+        venta_id: int,
         session: AsyncSession
-    ) -> List[Utilidad]:
+    ) -> Optional[Utilidad]:
         """
-        Recupera Utilidades entre fecha_inicio y fecha_fin, paginadas.
+        Recupera la utilidad específica por venta_id.
         """
-        stmt = (
-            select(Utilidad)
-            .where(
-                and_(
-                    Utilidad.fecha >= fecha_inicio,
-                    Utilidad.fecha <= fecha_fin
-                )
-            )
-            .offset(offset)
-            .limit(limit)
-        )
+        stmt = select(Utilidad).where(Utilidad.venta_id == venta_id)
         result = await session.execute(stmt)
-        return result.scalars().all()
+        return result.scalar_one_or_none()

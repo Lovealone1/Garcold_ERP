@@ -5,8 +5,7 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.v1_0.entities import DetallePagoCompraDTO, TransaccionDTO
-from app.v1_0.schemas.pago_venta_schema import PagoResponseDTO
+from app.v1_0.entities import DetallePagoCompraDTO, TransaccionDTO, PagoResponseDTO
 from app.v1_0.repositories import (
     CompraRepository,
     EstadoRepository,

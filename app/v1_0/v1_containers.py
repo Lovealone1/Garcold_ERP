@@ -35,6 +35,8 @@ from app.v1_0.services.cliente_service import ClienteService
 from app.v1_0.services.proveedor_service import ProveedorService
 from app.v1_0.services.utilidad_service import UtilidadService
 from app.v1_0.services.user_service import UserService
+from app.v1_0.services.banco_service import BancoService
+from app.v1_0.services.estado_service import EstadoService
 
 class APIContainer(containers.DeclarativeContainer):
     """
@@ -69,8 +71,21 @@ class APIContainer(containers.DeclarativeContainer):
 
     utilidad_service = providers.Singleton(
         UtilidadService,
-        utilidad_repository = utilidad_repository
+        utilidad_repository = utilidad_repository,
+        detalle_utilidad_repository = detalle_utilidad_repository, 
+        producto_repository = producto_repository
+        
     )
+
+    banco_service = providers.Singleton(
+        BancoService,
+        banco_repository=banco_repository
+    )
+
+    estado_service = providers.Singleton(
+        EstadoService, 
+        estado_repository = estado_repository
+        )
 
     proveedor_service = providers.Singleton(
         ProveedorService, 

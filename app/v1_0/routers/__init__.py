@@ -11,6 +11,8 @@ from app.v1_0.routers.cliente_router import router as cliente_router
 from app.v1_0.routers.proveedor_router import router as proveedor_router
 from app.v1_0.routers.utilidad_router import router as utilidad_router
 from app.v1_0.routers.auth_router import router as auth_router
+from app.v1_0.routers.banco_router import router as banco_router
+from app.v1_0.routers.estado_router import router as estado_router  
 defined_routers = [
     venta_router,
     compra_router,
@@ -24,5 +26,7 @@ defined_routers = [
     cliente_router,
     proveedor_router,
     utilidad_router, 
-    auth_router
+    auth_router,
+    banco_router,
+    estado_router
 ]

@@ -1,21 +1,22 @@
 from .bancoDTO import BancoDTO
 from .categoria_gastoDTO import CategoriaGastosDTO
-from .clienteDTO import ClienteDTO
+from .clienteDTO import ClienteDTO, ClienteListDTO, ClientesPageDTO, ListClienteDTO
 from .compraDTO import CompraDTO
 from .creditoDTO import CreditoDTO
 from .detalle_compraDTO import DetalleCompraDTO
 from .detalle_pago_compraDTO import DetallePagoCompraDTO
-from .detalle_pago_ventaDTO import DetallePagoVentaDTO
+from .detalle_pago_ventaDTO import DetallePagoVentaDTO, PagoResponseDTO
 from .detalle_utilidadesDTO import DetalleUtilidadDTO
-from .detalle_ventaDTO import DetalleVentaDTO
+from .detalle_ventaDTO import DetalleVentaDTO, DetalleVentaViewDTO
 from .gastoDTO import GastoDTO
 from .inversionDTO import InversionDTO
-from .productoDTO import ProductoDTO
-from .proveedorDTO import ProveedorDTO
-from .transaccionDTO import TransaccionDTO
-from .utilidadDTO import UtilidadDTO
-from .ventaDTO import VentaDTO
+from .productoDTO import ProductoDTO, ProductoListDTO, ProductosPageDTO
+from .proveedorDTO import ProveedorDTO,ProveedoresPageDTO,ProveedorListDTO
+from .transaccionDTO import TransaccionDTO, TransaccionListDTO, TransaccionPageDTO, TransaccionResponseDTO
+from .utilidadDTO import UtilidadDTO, UtilidadListDTO, UtilidadPageDTO
+from .ventaDTO import VentaDTO, VentaListDTO, VentasPageDTO
 from .userDTO import UserDTO
+from .estadoDTO import EstadoDTO
 
 __all__ = [
     "BancoDTO",
@@ -35,5 +36,22 @@ __all__ = [
     "TransaccionDTO",
     "UtilidadDTO",
     "VentaDTO",
-    "UserDTO"
+    "UserDTO",
+    "ClienteListDTO", 
+    "ClientesPageDTO",
+    "ProveedoresPageDTO",
+    "ProveedorListDTO",
+    "ProductoListDTO",
+    "ProductosPageDTO",
+    "VentaListDTO", 
+    "VentasPageDTO",
+    "EstadoDTO",
+    "DetalleVentaViewDTO",
+    "PagoResponseDTO",
+    "ListClienteDTO",
+    "UtilidadListDTO", 
+    "UtilidadPageDTO",
+    "TransaccionListDTO", 
+    "TransaccionPageDTO",
+    "TransaccionResponseDTO"
 ]

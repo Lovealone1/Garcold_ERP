@@ -73,7 +73,7 @@ async def listar_creditos(
     """
     creditos = await credito_service.listar_creditos(db=db)
     return [
-        CreditoResponseDTO(id=c.id, nombre=c.nombre, monto=c.monto)
+        CreditoResponseDTO(id=c.id, nombre=c.nombre, monto=c.monto, fecha_creacion=c.fecha_creacion)
         for c in creditos
     ]
 

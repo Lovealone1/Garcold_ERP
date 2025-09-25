@@ -1,11 +1,10 @@
-from typing import List, Optional
-from sqlalchemy import select, desc, or_, and_
+from typing import List, Optional, Tuple
+from sqlalchemy import select, desc, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from app.v1_0.models import Transaccion
 from app.v1_0.entities import TransaccionDTO
-from app.v1_0.schemas.transaccion_schema import TransaccionResponseDTO
 from .base_repository import BaseRepository
 
 PAGE_SIZE = 10
@@ -39,60 +38,26 @@ class TransaccionRepository(BaseRepository[Transaccion]):
         await self.add(transaccion, session)
         return transaccion
 
-    async def list_transacciones(
-        self,
-        session: AsyncSession,
-        limit: int = 10,
-        offset: int = 0
-    ) -> List[Transaccion]:
+    async def list_paginated(
+    self,
+    offset: int,
+    limit: int,
+    session: AsyncSession,
+    ) -> Tuple[List[Transaccion], int]:
         """
-        Recupera todas las transacciones paginadas.
-
-        Args:
-            session (AsyncSession): Sesión asíncrona de SQLAlchemy.
-            limit (int): Número máximo de registros a devolver.
-            offset (int): Número de registros a saltar.
-
-        Returns:
-            List[Transaccion]: Lista de transacciones.
+        Lista de Transacciones paginada con total.
+        Retorna items y total de registros.
         """
         stmt = (
             select(Transaccion)
-            .order_by(desc(Transaccion.fecha))
-            .limit(limit)
+            .order_by(desc(Transaccion.fecha), Transaccion.id.desc())
             .offset(offset)
-        )
-        result = await session.execute(stmt)
-        return result.scalars().all()
-
-    async def list_by_tipo(
-        self,
-        tipo_id: int,
-        session: AsyncSession,
-        limit: int = 10,
-        offset: int = 0
-    ) -> List[Transaccion]:
-        """
-        Recupera transacciones de un tipo específico, paginadas.
-
-        Args:
-            tipo_id (int): ID del tipo de transacción.
-            session (AsyncSession): Sesión asíncrona de SQLAlchemy.
-            limit (int): Número máximo de registros a devolver.
-            offset (int): Número de registros a saltar.
-
-        Returns:
-            List[Transaccion]: Lista de transacciones filtradas por tipo.
-        """
-        stmt = (
-            select(Transaccion)
-            .where(Transaccion.tipo_id == tipo_id)
-            .order_by(desc(Transaccion.fecha))
             .limit(limit)
-            .offset(offset)
         )
-        result = await session.execute(stmt)
-        return result.scalars().all()
+        items = (await session.execute(stmt)).scalars().all()
+        total = await session.scalar(select(func.count(Transaccion.id)))
+        return items, int(total or 0)
+
 
     async def delete_transaccion(
         self,
@@ -223,14 +188,20 @@ class TransaccionRepository(BaseRepository[Transaccion]):
         return result.scalar_one_or_none()
     
     async def list_paginated(
-        self,
-        offset: int,
-        limit: int,
-        session: AsyncSession
-    ) -> List[Transaccion]:
-        stmt = select(Transaccion).offset(offset).limit(limit)
-        result = await session.execute(stmt)
-        return result.scalars().all()
+    self,
+    offset: int,
+    limit: int,
+    session: AsyncSession
+    ) -> Tuple[List[Transaccion], int]:
+        stmt = (
+            select(Transaccion)
+            .order_by(Transaccion.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = (await session.execute(stmt)).scalars().all()
+        total = await session.scalar(select(func.count(Transaccion.id)))
+        return items, int(total or 0)
 
     async def list_by_banco_paginated(
         self,

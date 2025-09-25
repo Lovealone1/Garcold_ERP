@@ -1,12 +1,11 @@
-# app/v1_0/repositories/proveedor_repository.py
-
-from typing import Optional, List
-from sqlalchemy import select
+from typing import Optional, List, Tuple
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.v1_0.models import Proveedor
 from app.v1_0.entities import ProveedorDTO
 from .base_repository import BaseRepository
+
 
 class ProveedorRepository(BaseRepository[Proveedor]):
     def __init__(self):
@@ -17,36 +16,18 @@ class ProveedorRepository(BaseRepository[Proveedor]):
         dto: ProveedorDTO,
         session: AsyncSession
     ) -> Proveedor:
-        """
-        Crea un nuevo Proveedor a partir del DTO y hace flush para asignar su ID.
-        """
+        """Crea un nuevo Proveedor a partir del DTO y hace flush para asignar su ID."""
         proveedor = Proveedor(**dto.model_dump())
         await self.add(proveedor, session)
         return proveedor
 
-    async def get_by_cc_nit(
+    async def get_by_id(
         self,
-        cc_nit: str,
+        proveedor_id: int,
         session: AsyncSession
     ) -> Optional[Proveedor]:
-        """
-        Obtiene un Proveedor por su CC/NIT, o None si no existe.
-        """
-        stmt = select(Proveedor).where(Proveedor.cc_nit == cc_nit)
-        result = await session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def get_by_nombre(
-        self,
-        nombre: str,
-        session: AsyncSession
-    ) -> List[Proveedor]:
-        """
-        Busca proveedores cuyo nombre contenga la cadena (case‑insensitive).
-        """
-        stmt = select(Proveedor).where(Proveedor.nombre.ilike(f"%{nombre}%"))
-        result = await session.execute(stmt)
-        return result.scalars().all()
+        """Obtiene un Proveedor por su ID, o None si no existe."""
+        return await super().get_by_id(proveedor_id, session)
 
     async def update_proveedor(
         self,
@@ -54,15 +35,16 @@ class ProveedorRepository(BaseRepository[Proveedor]):
         dto: ProveedorDTO,
         session: AsyncSession
     ) -> Optional[Proveedor]:
-        """
-        Actualiza un Proveedor existente con los campos proporcionados en el DTO.
-        """
+        """Actualiza solo los campos permitidos de un Proveedor existente según el DTO."""
         proveedor = await self.get_by_id(proveedor_id, session)
         if not proveedor:
             return None
 
+        allowed_fields = {"nombre", "cc_nit", "correo", "celular", "direccion", "ciudad"}
+
         for field, value in dto.model_dump(exclude_unset=True).items():
-            setattr(proveedor, field, value)
+            if field in allowed_fields:
+                setattr(proveedor, field, value)
 
         await self.update(proveedor, session)
         return proveedor
@@ -72,9 +54,7 @@ class ProveedorRepository(BaseRepository[Proveedor]):
         proveedor_id: int,
         session: AsyncSession
     ) -> bool:
-        """
-        Elimina un Proveedor dado su ID.
-        """
+        """Elimina un Proveedor dado su ID; retorna True si existía."""
         proveedor = await self.get_by_id(proveedor_id, session)
         if not proveedor:
             return False
@@ -83,18 +63,18 @@ class ProveedorRepository(BaseRepository[Proveedor]):
         return True
 
     async def list_paginated(
-            self,
-            offset: int,
-            limit: int,
-            session: AsyncSession
-        ) -> List[Proveedor]:
-            """
-            Recupera todos los Proveedores paginados.
-            """
-            stmt = (
-                select(Proveedor)
-                .offset(offset)
-                .limit(limit)
-            )
-            result = await session.execute(stmt)
-            return result.scalars().all()
+        self,
+        offset: int,
+        limit: int,
+        session: AsyncSession
+    ) -> Tuple[List[Proveedor], int]:
+        """Lista paginada con total."""
+        stmt = (
+            select(Proveedor)
+            .order_by(Proveedor.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = (await session.execute(stmt)).scalars().all()
+        total = await session.scalar(select(func.count(Proveedor.id)))
+        return items, int(total or 0)

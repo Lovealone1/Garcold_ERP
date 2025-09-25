@@ -1,9 +1,8 @@
 import time
 import json
-from fastapi import FastAPI, APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI, APIRouter
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.v1_0.v1_router import v1_router
 from app.app_containers import ApplicationContainer  
@@ -26,7 +25,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.container = container
-
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],  
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     base_router = APIRouter(prefix=PREFIX)
     base_router.include_router(v1_router)
 

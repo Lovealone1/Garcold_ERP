@@ -1,20 +1,5 @@
 from pydantic import BaseModel, Field
-from datetime import datetime
 from typing import Optional
-
-class ClienteListDTO(BaseModel):
-    """
-    DTO para el listado completo de clientes, con todos sus campos.
-    """
-    id: int
-    nombre: str
-    cc_nit: str
-    correo: Optional[str] = None
-    celular: Optional[str] = None
-    direccion: str
-    ciudad: str
-    saldo: float
-    fecha_creacion: datetime
 
 class ClienteRequestDTO(BaseModel):
     """

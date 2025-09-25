@@ -22,7 +22,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
             "app.v1_0.routers.cliente_router",
             "app.v1_0.routers.proveedor_router",
             "app.v1_0.routers.utilidad_router",
-            "app.v1_0.routers.auth_router"
+            "app.v1_0.routers.banco_router",
+            "app.v1_0.routers.auth_router", 
+            "app.v1_0.routers.estado_router"
             ]
     )
 

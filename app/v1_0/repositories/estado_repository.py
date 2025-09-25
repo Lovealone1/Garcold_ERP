@@ -1,9 +1,6 @@
-# app/v1_0/repositories/estado_repository.py
-
-from typing import Optional
+from typing import List, Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.v1_0.models import Estado
 from .base_repository import BaseRepository
 
@@ -16,9 +13,7 @@ class EstadoRepository(BaseRepository[Estado]):
         estado_id: int,
         session: AsyncSession
     ) -> Optional[Estado]:
-        """
-        Recupera un Estado por su ID.
-        """
+        """Recupera un Estado por su ID."""
         return await super().get_by_id(estado_id, session)
 
     async def get_by_nombre(
@@ -34,3 +29,13 @@ class EstadoRepository(BaseRepository[Estado]):
         )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_estados(
+        self,
+        session: AsyncSession
+    ) -> List[Estado]:
+        """
+        Retorna todos los Estados.
+        """
+        result = await session.execute(select(Estado).order_by(Estado.id.asc()))
+        return list(result.scalars().all())

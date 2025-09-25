@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, Float,DateTime, Boolean
 from sqlalchemy.orm import relationship
 from .base import Base
 from datetime import datetime
+
 class Producto(Base):
     __tablename__ = "producto"
 

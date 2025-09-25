@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from datetime import date
 class CreditoRequestDTO(BaseModel):
     """
     DTO para creación o actualización de un crédito.
@@ -15,3 +15,4 @@ class CreditoResponseDTO(BaseModel):
     id: int = Field(..., description="ID del crédito")
     nombre: str = Field(..., description="Nombre del crédito")
     monto: float = Field(..., description="Monto actual del crédito")
+    fecha_creacion: date = Field(..., description="Fecha de vencimiento del credito")

@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependency_injector.wiring import inject, Provide
@@ -6,8 +6,9 @@ from dependency_injector.wiring import inject, Provide
 from app.utils.database.db_connector import get_db
 from app.app_containers import ApplicationContainer
 
-from app.v1_0.entities import ProveedorDTO
-from app.v1_0.schemas.proveedor_schema import ProveedorRequestDTO, ProveedorListDTO
+# DTOs de entidades para salida. Schemas sólo para entrada.
+from app.v1_0.entities import ProveedorDTO, ProveedorListDTO, ProveedoresPageDTO
+from app.v1_0.schemas.proveedor_schema import ProveedorRequestDTO
 from app.v1_0.services.proveedor_service import ProveedorService
 
 router = APIRouter(prefix="/proveedores", tags=["Proveedores"])
@@ -15,23 +16,24 @@ router = APIRouter(prefix="/proveedores", tags=["Proveedores"])
 
 @router.post(
     "/crear",
-    response_model=ProveedorListDTO,
-    summary="Crea un nuevo proveedor"
+    response_model=ProveedorDTO,
+    summary="Crea un nuevo proveedor",
 )
 @inject
 async def crear_proveedor(
     request: ProveedorRequestDTO,
     db: AsyncSession = Depends(get_db),
-    service: ProveedorService = Depends(
+    proveedor_service: ProveedorService = Depends(
         Provide[ApplicationContainer.api_container.proveedor_service]
-    )
+    ),
 ):
     dto = ProveedorDTO(**request.model_dump())
     try:
-        creado = await service.crear_proveedor(dto, db)
+        creado = await proveedor_service.crear_proveedor(dto, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return ProveedorListDTO(
+
+    return ProveedorDTO(
         id=creado.id,
         cc_nit=creado.cc_nit,
         nombre=creado.nombre,
@@ -39,145 +41,101 @@ async def crear_proveedor(
         ciudad=creado.ciudad,
         celular=creado.celular,
         correo=creado.correo,
-        fecha_creacion=creado.fecha_creacion
+        fecha_creacion=creado.fecha_creacion,
     )
 
 
 @router.get(
     "/",
-    response_model=List[ProveedorListDTO],
-    summary="Lista proveedores paginados"
+    response_model=ProveedoresPageDTO,
+    summary="Lista proveedores paginados",
 )
 @inject
 async def listar_proveedores(
     page: int = Query(1, ge=1, description="Número de página"),
     db: AsyncSession = Depends(get_db),
-    service: ProveedorService = Depends(
+    proveedor_service: ProveedorService = Depends(
         Provide[ApplicationContainer.api_container.proveedor_service]
-    )
-):
-    try:
-        lista = await service.listar_proveedores(page, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return [
-        ProveedorListDTO(
-            id=p.id,
-            cc_nit=p.cc_nit,
-            nombre=p.nombre,
-            direccion=p.direccion,
-            ciudad=p.ciudad,
-            celular=p.celular,
-            correo=p.correo,
-            fecha_creacion=p.fecha_creacion
-        )
-        for p in lista
-    ]
+    ),
+) -> ProveedoresPageDTO:
+    return await proveedor_service.listar_proveedores(page=page, db=db)
 
 
 @router.get(
-    "/obtener/{cc_nit}",
+    "/{proveedor_id}",
     response_model=ProveedorListDTO,
-    summary="Obtiene un proveedor por CC/NIT"
+    summary="Obtiene un proveedor por ID",
 )
 @inject
-async def obtener_proveedor(
-    cc_nit: str,
+async def obtener_proveedor_por_id(
+    proveedor_id: int,
     db: AsyncSession = Depends(get_db),
-    service: ProveedorService = Depends(
+    proveedor_service: ProveedorService = Depends(
         Provide[ApplicationContainer.api_container.proveedor_service]
-    )
+    ),
 ):
-    prov = await service.obtener_por_cc_nit(cc_nit, db)
-    if not prov:
+    proveedor = await proveedor_service.obtener_por_id(proveedor_id, db)
+    if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
     return ProveedorListDTO(
-        id=prov.id,
-        cc_nit=prov.cc_nit,
-        nombre=prov.nombre,
-        direccion=prov.direccion,
-        ciudad=prov.ciudad,
-        celular=prov.celular,
-        correo=prov.correo,
-        fecha_creacion=prov.fecha_creacion
+        id=proveedor.id,
+        nombre=proveedor.nombre,
+        cc_nit=proveedor.cc_nit,
+        correo=proveedor.correo,
+        celular=proveedor.celular,
+        direccion=proveedor.direccion,
+        ciudad=proveedor.ciudad,
+        fecha_creacion=proveedor.fecha_creacion,
     )
-
-
-@router.get(
-    "/buscar",
-    response_model=List[ProveedorListDTO],
-    summary="Busca proveedores por nombre"
-)
-@inject
-async def buscar_proveedores(
-    nombre: str = Query(..., description="Texto a buscar en el nombre"),
-    db: AsyncSession = Depends(get_db),
-    service: ProveedorService = Depends(
-        Provide[ApplicationContainer.api_container.proveedor_service]
-    )
-):
-    resultados = await service.obtener_por_nombre(nombre, db)
-    return [
-        ProveedorListDTO(
-            id=p.id,
-            cc_nit=p.cc_nit,
-            nombre=p.nombre,
-            direccion=p.direccion,
-            ciudad=p.ciudad,
-            celular=p.celular,
-            correo=p.correo,
-            fecha_creacion=p.fecha_creacion
-        )
-        for p in resultados
-    ]
 
 
 @router.put(
     "/actualizar/{proveedor_id}",
-    response_model=ProveedorListDTO,
-    summary="Actualiza un proveedor existente"
+    response_model=ProveedorDTO,
+    summary="Actualiza un proveedor existente",
 )
 @inject
 async def actualizar_proveedor(
     proveedor_id: int,
     request: ProveedorRequestDTO,
     db: AsyncSession = Depends(get_db),
-    service: ProveedorService = Depends(
+    proveedor_service: ProveedorService = Depends(
         Provide[ApplicationContainer.api_container.proveedor_service]
-    )
+    ),
 ):
     dto = ProveedorDTO(**request.model_dump())
     try:
-        updated = await service.actualizar_proveedor(proveedor_id, dto, db)
+        actualizado = await proveedor_service.actualizar_proveedor(proveedor_id, dto, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return ProveedorListDTO(
-        id=updated.id,
-        cc_nit=updated.cc_nit,
-        nombre=updated.nombre,
-        direccion=updated.direccion,
-        ciudad=updated.ciudad,
-        celular=updated.celular,
-        correo=updated.correo,
-        fecha_creacion=updated.fecha_creacion
+
+    return ProveedorDTO(
+        cc_nit=actualizado.cc_nit,
+        nombre=actualizado.nombre,
+        direccion=actualizado.direccion,
+        ciudad=actualizado.ciudad,
+        celular=actualizado.celular,
+        correo=actualizado.correo,
+        fecha_creacion=actualizado.fecha_creacion,
     )
 
 
 @router.delete(
     "/eliminar/{proveedor_id}",
-    response_model=dict,
-    summary="Elimina un proveedor"
+    response_model=Dict[str, str],
+    summary="Elimina un proveedor",
 )
 @inject
 async def eliminar_proveedor(
     proveedor_id: int,
     db: AsyncSession = Depends(get_db),
-    service: ProveedorService = Depends(
+    proveedor_service: ProveedorService = Depends(
         Provide[ApplicationContainer.api_container.proveedor_service]
-    )
+    ),
 ):
     try:
-        await service.eliminar_proveedor(proveedor_id, db)
+        await proveedor_service.eliminar_proveedor(proveedor_id, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"mensaje": f"Proveedor con ID {proveedor_id} eliminado correctamente"}
